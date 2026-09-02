@@ -1,0 +1,7 @@
+{
+  "name": "vulnerable-mcp-server",
+  "private": true,
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "latest"
+  }
+}

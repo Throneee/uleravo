@@ -1,0 +1,72 @@
+{
+  "name": "uleravo",
+  "version": "0.6.3",
+  "description": "Deterministic, evidence-first security scanner for MCP servers",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "schemas",
+    "README.md",
+    "SECURITY.md",
+    "docs/architecture.md",
+    "docs/github-action.md",
+    "docs/reporting-results.md",
+    "docs/rules.md",
+    "docs/threat-model.md",
+    "examples/github-actions/uleravo-observe.yml",
+    "examples/reports/uleravo.sample.json",
+    "examples/reports/sample-target/src/index.ts",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES"
+  ],
+  "bin": {
+    "uleravo": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "build:action": "node scripts/build-action.mjs",
+    "check": "pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm build && pnpm check:action && pnpm check:public-export",
+    "check:action": "node scripts/check-action-bundle.mjs",
+    "check:publication": "node scripts/check-publication-ready.mjs",
+    "check:public-export": "node scripts/public-export.mjs --check",
+    "format": "biome format --write .",
+    "lint": "biome check .",
+    "prepack": "npm run build",
+    "scan:self": "node dist/cli.js scan . --exclude test --exclude examples/reports/sample-target --fail-on high",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "typescript": "6.0.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.11",
+    "@types/node": "26.4.0",
+    "@vitest/coverage-v8": "4.1.11",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Throneee/uleravo.git"
+  },
+  "homepage": "https://github.com/Throneee/uleravo#readme",
+  "bugs": {
+    "url": "https://github.com/Throneee/uleravo/issues"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mirsad.local/schemas/signed-report-envelope-1.0.0.json",
+  "title": "Uleravo signed report envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "algorithm",
+    "keyId",
+    "payload",
+    "payloadSha256",
+    "payloadType",
+    "schemaVersion",
+    "signature"
+  ],
+  "properties": {
+    "algorithm": { "const": "Ed25519" },
+    "keyId": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "payload": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 13333334,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "payloadSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "payloadType": { "const": "scan-report" },
+    "schemaVersion": { "const": "1.0.0" },
+    "signature": {
+      "type": "string",
+      "minLength": 86,
+      "maxLength": 86,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    }
+  }
+}

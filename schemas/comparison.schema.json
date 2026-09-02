@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mirsad.local/schemas/comparison-1.0.0.json",
+  "title": "Uleravo report comparison",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["added", "baseline", "current", "resolved", "schemaVersion", "summary", "unchanged"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "baseline": { "$ref": "#/$defs/scanReference" },
+    "current": { "$ref": "#/$defs/scanReference" },
+    "summary": { "$ref": "#/$defs/summary" },
+    "added": {
+      "type": "array",
+      "items": { "$ref": "https://mirsad.local/schemas/report-1.0.0.json#/$defs/finding" }
+    },
+    "resolved": {
+      "type": "array",
+      "items": { "$ref": "https://mirsad.local/schemas/report-1.0.0.json#/$defs/finding" }
+    },
+    "unchanged": {
+      "type": "array",
+      "items": { "$ref": "https://mirsad.local/schemas/report-1.0.0.json#/$defs/finding" }
+    }
+  },
+  "$defs": {
+    "scanReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scanId", "scannerVersion"],
+      "properties": {
+        "repository": {
+          "$ref": "https://mirsad.local/schemas/report-1.0.0.json#/$defs/repositoryProvenance"
+        },
+        "scanId": { "type": "string", "pattern": "^[a-f0-9]{24}$" },
+        "scanInputSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "scannerVersion": { "type": "string", "minLength": 1 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["added", "resolved", "unchanged"],
+      "properties": {
+        "added": { "type": "integer", "minimum": 0 },
+        "resolved": { "type": "integer", "minimum": 0 },
+        "unchanged": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

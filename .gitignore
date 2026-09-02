@@ -1,0 +1,10 @@
+coverage/
+dist/
+!action/dist/
+!action/dist/index.cjs
+node_modules/
+*.log
+*.sarif
+*-signing-key.pem
+*-signing-key.pub.pem
+.DS_Store

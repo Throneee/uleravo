@@ -1,0 +1,90 @@
+{
+  "diagnostics": [],
+  "findings": [
+    {
+      "column": 3,
+      "confidence": "high",
+      "endColumn": 16,
+      "endLine": 12,
+      "evidence": "exec(command);",
+      "file": "src/index.ts",
+      "fingerprint": "ce40aefd9412f6d9cdf6dcf6",
+      "line": 12,
+      "message": "Tool input is interpolated into a command interpreted by a shell.",
+      "remediation": "Replace shell execution with a fixed executable and an argument array. Validate each argument against an allowlist and keep shell mode disabled.",
+      "ruleId": "MCP001",
+      "severity": "critical",
+      "standards": {
+        "atlas": [],
+        "cwe": ["CWE-78"],
+        "owasp": ["OWASP-LLM06:2025"]
+      },
+      "title": "MCP input reaches shell execution"
+    },
+    {
+      "column": 23,
+      "confidence": "high",
+      "endColumn": 47,
+      "endLine": 9,
+      "evidence": "const sampleApiKey = \"<redacted>\";",
+      "file": "src/index.ts",
+      "fingerprint": "6a6a86d46797b7b365c901d8",
+      "line": 9,
+      "message": "A credential-like value is assigned directly instead of being loaded from a secret binding.",
+      "remediation": "Revoke the exposed credential, remove it from history, and load the replacement from a narrowly scoped secret store at runtime.",
+      "ruleId": "MCP007",
+      "severity": "high",
+      "standards": {
+        "atlas": [],
+        "cwe": ["CWE-798"],
+        "owasp": ["OWASP-LLM02:2025"]
+      },
+      "title": "Hardcoded credential"
+    },
+    {
+      "column": 9,
+      "confidence": "medium",
+      "endColumn": 23,
+      "endLine": 16,
+      "evidence": "await readFile(file);",
+      "file": "src/index.ts",
+      "fingerprint": "e9a8cde4c58002961b3e6f83",
+      "line": 16,
+      "message": "Tool input is used as a filesystem path without a visible canonical-root check.",
+      "remediation": "Resolve the requested path beneath a fixed root, compare the canonical path to that root, and reject absolute paths and parent traversal.",
+      "ruleId": "MCP003",
+      "severity": "high",
+      "standards": {
+        "atlas": [],
+        "cwe": ["CWE-22"],
+        "owasp": ["OWASP-LLM06:2025"]
+      },
+      "title": "MCP input reaches a filesystem path"
+    }
+  ],
+  "provenance": {
+    "lockfiles": [],
+    "scanInputSha256": "21c5a147a71b9c8f65ac799798a04b3d8ba3d11ac51d57228a80ed171e77dfbb"
+  },
+  "scan": {
+    "durationMs": 18,
+    "filesScanned": 1,
+    "filesSkipped": 0,
+    "generatedAt": "2026-09-02T04:51:43.235Z",
+    "id": "0d9da546d979ba36e7931f89",
+    "target": "sample-target"
+  },
+  "scanner": {
+    "name": "Uleravo",
+    "version": "0.6.3"
+  },
+  "schemaVersion": "1.0.0",
+  "summary": {
+    "critical": 1,
+    "high": 2,
+    "info": 0,
+    "low": 0,
+    "medium": 0,
+    "total": 3
+  }
+}

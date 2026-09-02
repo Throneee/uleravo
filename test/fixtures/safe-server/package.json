@@ -1,0 +1,7 @@
+{
+  "name": "safe-mcp-server",
+  "private": true,
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.2.3"
+  }
+}

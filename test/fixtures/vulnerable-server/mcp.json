@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mutable-example": {
+      "command": "npx",
+      "args": ["-y", "@example/mcp-server"]
+    }
+  }
+}

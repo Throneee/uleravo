@@ -1,0 +1,69 @@
+name: Uleravo MCP security scan
+description: Scan an MCP server without executing it and produce JSON and SARIF evidence
+author: Uleravo
+
+inputs:
+  target:
+    description: Relative file or directory to scan inside GITHUB_WORKSPACE
+    required: false
+    default: .
+  fail-on:
+    description: Lowest finding severity that fails a complete scan, or none to observe; scan errors always fail
+    required: false
+    default: none
+  output:
+    description: Relative path for the JSON report
+    required: false
+    default: uleravo.json
+  sarif-output:
+    description: Relative path for the SARIF report
+    required: false
+    default: uleravo.sarif
+  exclude:
+    description: Newline-separated relative paths to exclude
+    required: false
+    default: ""
+  max-file-bytes:
+    description: Maximum bytes read from one target file, from 1 to 100000000
+    required: false
+    default: "1000000"
+
+outputs:
+  outcome:
+    description: passed when complete without exceeding the configured threshold, findings when the threshold is exceeded, or error when incomplete
+  scan-complete:
+    description: Whether the scan completed without error diagnostics
+  error-diagnostics:
+    description: Number of error diagnostics
+  warning-diagnostics:
+    description: Number of warning diagnostics
+  threshold-exceeded:
+    description: Whether returned findings meet the configured fail-on threshold; check scan-complete separately
+  findings:
+    description: Total number of findings
+  has-findings:
+    description: Whether the report contains one or more findings; check scan-complete separately
+  critical:
+    description: Number of critical findings
+  high:
+    description: Number of high findings
+  medium:
+    description: Number of medium findings
+  low:
+    description: Number of low findings
+  info:
+    description: Number of informational findings
+  scan-id:
+    description: Deterministic scan identifier
+  report:
+    description: Workspace-relative JSON report path
+  sarif:
+    description: Workspace-relative SARIF report path
+
+runs:
+  using: node24
+  main: action/dist/index.cjs
+
+branding:
+  icon: shield
+  color: blue

@@ -1,0 +1,43 @@
+name: Uleravo observation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Uleravo observation (findings do not block)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Findings are observational. Scanner/configuration errors still fail this step.
+      - name: Scan with Uleravo
+        id: uleravo
+        # Release preparation: Commit B must replace this with the public Commit A full SHA.
+        uses: OWNER/REPOSITORY@PUBLIC_COMMIT_A
+        with:
+          target: .
+          fail-on: none
+          output: uleravo-results/uleravo.json
+          sarif-output: uleravo-results/uleravo.sarif
+
+      - name: Retain Uleravo evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: uleravo-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            uleravo-results/uleravo.json
+            uleravo-results/uleravo.sarif
+          if-no-files-found: error
+          retention-days: 30

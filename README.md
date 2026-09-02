@@ -8,12 +8,12 @@ Uleravo is the public-beta name after a preliminary exact, near-name, namespace,
 
 ## Product status
 
-- **Available now:** v0.6.3 is a free downloadable CLI beta for local observation scans.
-- **Preparing:** a clean public GitHub repository and immutable Action pin for copy-paste CI installation.
+- **Ready for public beta:** the reviewed v0.6.3 CLI package and bundled GitHub Action source have passed their local release gates.
+- **Launch operation pending in this snapshot:** create and push the public GitHub remote, then promote the production-site release. If you are reading this on the public GitHub repository, the remote step is complete.
 - **Next:** Agent Skills, Agent Plugins, one evidence-selected harness snapshot, semantic capability delta, and advisory trust decisions.
 - **Not current capabilities:** hosted monitoring, organization policy, a trusted enforcement boundary, a dashboard, or runtime protection.
 
-The downloadable core is licensed Apache-2.0 and ships from the exact disclosure-safe export described by `release/public-export.json`. The public GitHub Action remains gated on a clean public repository, immutable commit pins, and the separate publication check. Do not interpret the future product direction as a claim that those capabilities already exist.
+The release core is licensed Apache-2.0 and ships from the exact disclosure-safe export described by `release/public-export.json`. The GitHub Action uses immutable commit pins, and the default `pnpm check` gate includes the separate publication check. External availability begins when this exact history is pushed to the public remote. Do not interpret the future product direction as a claim that those capabilities already exist.
 
 ## What it does
 
@@ -44,9 +44,11 @@ Uleravo v0.6.x is static analysis for MCP implementations. It does not analyze A
 
 JavaScript and TypeScript analysis follows only the documented one-hop import case; Python analysis is primarily intraprocedural. Medium-confidence filesystem and outbound-request findings may require review. A complete scan means the selected inputs were processed without error diagnostics under the documented analyzer coverage. It does not mean every vulnerability class was analyzed.
 
+Launch materials also cite 25 pinned cases used as internal validation evidence. The corpus target set, methodology, and result records are deliberately outside this public export, so that evidence is not a publicly reproducible benchmark.
+
 ## Install the free beta
 
-Requirements: Node.js 22.13 or newer. Download `uleravo-0.6.3.tgz` and `uleravo-0.6.3.tgz.sha256` from the official Uleravo launch site, verify the archive, then install and scan locally:
+Requirements: Node.js 22.13 or newer. Download `uleravo-0.6.3.tgz` and `uleravo-0.6.3.tgz.sha256` from the [official Uleravo launch site](https://uleravo.babanosh.chatgpt.site/), verify the archive, then install and scan locally:
 
 ```bash
 sha256sum --check uleravo-0.6.3.tgz.sha256
@@ -118,7 +120,7 @@ Keep the private key out of source control and distribute the public key through
 
 ## GitHub Action
 
-The repository includes a Node 24 Action that runs the same scanner without installing dependencies or executing target code. The [observation workflow template](examples/github-actions/uleravo-observe.yml) is release preparation, not yet copy-paste installation: public Commit B must replace its explicit placeholder with the clean public Commit A full SHA. The separate `pnpm check:publication` gate intentionally fails in the staged state and requires that pin plus full 40-hex SHAs for every Action before tagging or publication. The completed template disables persisted checkout credentials, scans pull requests and pushes to `main`, and requests 30-day retention for redacted JSON and SARIF evidence.
+The repository includes a Node 24 Action that runs the same scanner without installing dependencies or executing target code. The [observation workflow template](examples/github-actions/uleravo-observe.yml) is publication-ready and pins Uleravo to reviewed Commit A, `63f52dadd65960a873aa14067ab014f950fc4ec5`. The default `pnpm check` gate includes `pnpm check:publication`, which requires that product pin and full 40-hex SHAs for every Action before tagging or publication. The template disables persisted checkout credentials, scans pull requests and pushes to `main`, and requests 30-day retention for redacted JSON and SARIF evidence.
 
 After the first run, use the job summary to confirm completeness, download the evidence artifact, and review critical and high findings first. The [redacted sample report](examples/reports/uleravo.sample.json), generated from a deliberately vulnerable [synthetic target](examples/reports/sample-target/src/index.ts), shows the report fields without exposing real project data.
 
@@ -126,7 +128,7 @@ The scanner uses `fail-on: none`, so findings do not fail an observation run. A 
 
 Observation mode is not a trusted baseline or new-finding enforcement boundary. GitHub shows a SARIF result as a pull-request check annotation only when every reported line is in the pull-request diff and on added or edited lines. Because Uleravo reports the sink that received untrusted input, a changed caller reaching an unchanged sink can fall outside that view. The retained reports remain the complete Uleravo evidence.
 
-Uleravo's scanner and Action do not initiate network requests, use `GITHUB_TOKEN`, or print finding evidence into workflow logs. The example's checkout and artifact-upload steps are separate networked GitHub Actions. Because the source repository is private, the Action can currently be consumed only by repositories under the same owner where private-Action access is enabled. Independent users can run the downloadable CLI now; copy-paste Action installation follows when the clean public repository and immutable pins exist. See [the GitHub Action reference](docs/github-action.md) for setup, first-result triage, inputs, outputs, and the exact workspace boundary.
+Uleravo's scanner and Action do not initiate network requests, use `GITHUB_TOKEN`, or print finding evidence into workflow logs. The example's checkout and artifact-upload steps are separate networked GitHub Actions. At this local launch snapshot, creating and pushing `Throneee/uleravo` is still an operator step, so the pinned reference cannot resolve externally yet; if you are reading this from that public GitHub repository, the dependency is complete and the template is ready to copy. See [the GitHub Action reference](docs/github-action.md) for setup, first-result triage, inputs, outputs, and the exact workspace boundary.
 
 The CLI returns `0` when the configured threshold passes, `1` when findings meet `--fail-on`, and `2` for usage, scan, or rule failures.
 
@@ -160,7 +162,7 @@ Suppressions are intentionally absent in Phase 1. The first real false-positive 
 pnpm check
 ```
 
-The quality gate runs formatting and lint checks, strict TypeScript validation, tests with coverage thresholds, a production build, byte-for-byte Action bundle regeneration, and validation of the exact content-hashed public-export allowlist. The current suite exercises ESM and CommonJS imports, paired one-hop cross-file vulnerabilities and guards, Python decorators and multiline syntax, direct and aliased handlers, taint propagation, guarded paths, report redaction, provenance validation, binary lockfiles, multiset comparison, untrusted report parsing, signed-report tampering and key handling, Action workspace confinement, stable fingerprints, symlink handling, file limits, and all output formats. `scan:self` excludes the test tree and the exact deliberately vulnerable sample target; a dedicated release test rescans that target and binds the published sample's findings, provenance, and scan ID.
+The quality gate runs formatting and lint checks, strict TypeScript validation, tests with coverage thresholds, a production build, byte-for-byte Action bundle regeneration, validation of the exact content-hashed public-export allowlist, and the final immutable-pin publication check. The current suite exercises ESM and CommonJS imports, paired one-hop cross-file vulnerabilities and guards, Python decorators and multiline syntax, direct and aliased handlers, taint propagation, guarded paths, report redaction, provenance validation, binary lockfiles, multiset comparison, untrusted report parsing, signed-report tampering and key handling, Action workspace confinement, stable fingerprints, symlink handling, file limits, and all output formats. `scan:self` excludes the test tree and the exact deliberately vulnerable sample target; a dedicated release test rescans that target and binds the published sample's findings, provenance, and scan ID.
 
 The public release architecture is documented in [architecture](docs/architecture.md), and the scanner's security boundaries are documented in the [threat model](docs/threat-model.md). Use the [rule guide](docs/rules.md) for detector behavior, the [result-reporting guide](docs/reporting-results.md) for sanitized corrections, and the [security policy](SECURITY.md) for private vulnerability reports.
 

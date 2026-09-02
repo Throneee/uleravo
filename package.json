@@ -38,7 +38,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "build:action": "node scripts/build-action.mjs",
-    "check": "pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm build && pnpm check:action && pnpm check:public-export",
+    "check": "pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm build && pnpm check:action && pnpm check:public-export && pnpm check:publication",
     "check:action": "node scripts/check-action-bundle.mjs",
     "check:publication": "node scripts/check-publication-ready.mjs",
     "check:public-export": "node scripts/public-export.mjs --check",

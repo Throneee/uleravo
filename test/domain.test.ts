@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createFinding, severityRank, summarize } from "../src/domain.js";
-import { redactEvidence } from "../src/redact.js";
+import { boundedRedactedEvidence, redactEvidence } from "../src/redact.js";
 import { RULES } from "../src/rules/catalog.js";
 
 describe("finding domain", () => {
@@ -82,5 +82,17 @@ describe("finding domain", () => {
     } finally {
       replaceAll.mockRestore();
     }
+  });
+
+  it("re-redacts after truncation changes credential boundaries", () => {
+    const credential = `AKIA${"A".repeat(16)}`;
+    const crafted = `${"\u007F".repeat(122)}----${credential}X`;
+    const bounded = boundedRedactedEvidence(crafted, 1_000);
+
+    expect(bounded.length).toBeLessThanOrEqual(1_000);
+    expect(redactEvidence(bounded)).toBe(bounded);
+    expect(bounded).not.toContain(credential);
+    expect(boundedRedactedEvidence("short message", 1_000)).toBe("short message");
+    expect(boundedRedactedEvidence("a".repeat(1_001), 1_000)).toBe(`${"a".repeat(997)}...`);
   });
 });

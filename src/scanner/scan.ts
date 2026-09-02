@@ -12,7 +12,7 @@ import { pythonSecurityRule } from "../rules/python.js";
 import { hardcodedSecretRule } from "../rules/secrets.js";
 import type { ScannerRule } from "../rules/types.js";
 import { credentialInUrlRule, insecureTransportRule } from "../rules/urls.js";
-import { PRODUCT_NAME, VERSION } from "../version.js";
+import { MCP_ANALYZER_VERSION, PRODUCT_NAME } from "../version.js";
 import { type DiscoveryOptions, discoverFiles, type ScannableFile } from "./files.js";
 import { createProvenance, type RepositoryIdentity } from "./provenance.js";
 
@@ -81,7 +81,7 @@ export async function scan(target: string, options: ScanOptions = {}): Promise<S
     message: redactEvidence(diagnostic.message),
   }));
   const scanId = createHash("sha256")
-    .update(VERSION)
+    .update(MCP_ANALYZER_VERSION)
     .update("\0")
     .update(discovery.contentHash)
     .update("\0")
@@ -122,7 +122,7 @@ export async function scan(target: string, options: ScanOptions = {}): Promise<S
     },
     scanner: {
       name: PRODUCT_NAME,
-      version: VERSION,
+      version: MCP_ANALYZER_VERSION,
     },
     schemaVersion: "1.0.0",
     summary: summarize(uniqueFindings),

@@ -1,6 +1,15 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -78,6 +87,23 @@ describe("public release export", () => {
     const { stdout } = await runPublicExport("--check");
 
     expect(stdout).toMatch(/Public export allowlist validated: [1-9][0-9]* regular files\./);
+  });
+
+  it("keeps relative TypeScript modules and top-level tests inside the public allowlist", async () => {
+    const manifest = JSON.parse(
+      await readFile(path.join(repositoryRoot, "release/public-export.json"), "utf8"),
+    ) as { files: string[] };
+    const allowlisted = new Set(manifest.files);
+    const missingRelativeModules = await findMissingRelativeModules(manifest.files, allowlisted);
+    const topLevelTests = (
+      await readdir(path.join(repositoryRoot, "test"), { withFileTypes: true })
+    )
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".test.ts"))
+      .map((entry) => `test/${entry.name}`)
+      .sort();
+
+    expect(missingRelativeModules).toEqual([]);
+    expect(topLevelTests.filter((entry) => !allowlisted.has(entry))).toEqual([]);
   });
 
   it("copies only reviewed public files into a new empty tree", async () => {
@@ -289,6 +315,47 @@ async function runPublicExport(...arguments_: string[]) {
     cwd: repositoryRoot,
     encoding: "utf8",
   });
+}
+
+async function findMissingRelativeModules(
+  files: readonly string[],
+  allowlisted: ReadonlySet<string>,
+): Promise<string[]> {
+  const sources = await Promise.all(
+    files
+      .filter((entry) => entry.endsWith(".ts"))
+      .map(async (relativePath) => ({
+        relativePath,
+        source: await readFile(path.join(repositoryRoot, relativePath), "utf8"),
+      })),
+  );
+  const targets = sources.flatMap(({ relativePath, source }) =>
+    [...source.matchAll(/(?:from\s+|import\s*\()\s*["'](\.[^"']+\.js)["']/gu)]
+      .map((match) => match[1])
+      .filter((specifier): specifier is string => specifier !== undefined)
+      .map((specifier) =>
+        path.posix.normalize(
+          path.posix.join(path.posix.dirname(relativePath), specifier.replace(/\.js$/u, ".ts")),
+        ),
+      ),
+  );
+  const existing = await Promise.all(
+    targets.map(async (target) => {
+      try {
+        await access(path.join(repositoryRoot, target));
+        return target;
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+  return [
+    ...new Set(
+      existing.filter(
+        (target): target is string => target !== undefined && !allowlisted.has(target),
+      ),
+    ),
+  ].sort();
 }
 
 async function loadIdentityPredicates(): Promise<PublicExportIdentityPredicates> {

@@ -1,4 +1,31 @@
 export type {
+  ArtifactAbsentClaim,
+  ArtifactClaim,
+  ArtifactClosureFile,
+  ArtifactCoverage,
+  ArtifactDiagnostic,
+  ArtifactDiagnosticCode,
+  ArtifactEvidenceReference,
+  ArtifactEvidenceSource,
+  ArtifactEvidenceState,
+  ArtifactRepositoryClaims,
+  ArtifactSnapshot,
+  ArtifactSnapshotOptions,
+  ArtifactValueClaim,
+  SkillManifestClaims,
+} from "./artifacts/domain.js";
+export {
+  ARTIFACT_DIAGNOSTIC_CODES,
+  ARTIFACT_EVIDENCE_SOURCES,
+  ARTIFACT_EVIDENCE_STATES,
+  MAX_ARTIFACT_CLAIM_CHARACTERS,
+  MAX_ARTIFACT_DIAGNOSTICS,
+  MAX_ARTIFACT_REPORT_BYTES,
+  MAX_ARTIFACT_TARGET_CHARACTERS,
+} from "./artifacts/domain.js";
+export { parseArtifactSnapshot, readArtifactSnapshot } from "./artifacts/read.js";
+export { snapshotSkill } from "./artifacts/snapshot.js";
+export type {
   ComparisonSummary,
   ReportComparison,
   ScanReference,
@@ -18,6 +45,10 @@ export type {
   Severity,
   StandardsMapping,
 } from "./domain.js";
+export {
+  formatArtifactSnapshotJson,
+  formatArtifactSnapshotText,
+} from "./formatters/artifact-snapshot.js";
 export { formatComparisonJson, formatComparisonText } from "./formatters/comparison.js";
 export { formatJson } from "./formatters/json.js";
 export { formatSarif } from "./formatters/sarif.js";
@@ -39,4 +70,12 @@ export {
   signReport,
   verifySignedReport,
 } from "./signatures.js";
-export { PRODUCT_NAME, PRODUCT_SLUG, PRODUCT_URL, VERSION } from "./version.js";
+export {
+  ARTIFACT_ANALYZER_VERSION,
+  MCP_ANALYZER_VERSION,
+  PACKAGE_VERSION,
+  PRODUCT_NAME,
+  PRODUCT_SLUG,
+  PRODUCT_URL,
+  VERSION,
+} from "./version.js";

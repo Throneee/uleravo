@@ -76,6 +76,12 @@ describe("packed release", () => {
         path.join(temporaryRoot, "safe-target.ts"),
         "export const normalize = (value: string): string => value.trim();\n",
       );
+      const skillRoot = path.join(temporaryRoot, "minimal-skill");
+      await mkdir(skillRoot);
+      await writeFile(
+        path.join(skillRoot, "SKILL.md"),
+        "---\nname: minimal-skill\ndescription: A packaged-command smoke fixture.\n---\n\nInspect the supplied local input.\n",
+      );
       await Promise.all([access(installedShim), access(installedCli)]);
       await runInstalledCli(installedShim, installedCli, ["--version"], temporaryRoot);
       await runInstalledCli(
@@ -90,6 +96,29 @@ describe("packed release", () => {
         ["scan", path.join(temporaryRoot, "safe-target.ts"), "--fail-on", "high"],
         temporaryRoot,
       );
+
+      const artifactSnapshot = path.join(temporaryRoot, "skill.snapshot.json");
+      await runInstalledCli(
+        installedShim,
+        installedCli,
+        [
+          "snapshot",
+          skillRoot,
+          "--kind",
+          "skill",
+          "--format",
+          "json",
+          "--output",
+          artifactSnapshot,
+        ],
+        temporaryRoot,
+      );
+      const installedSnapshot = JSON.parse(await readFile(artifactSnapshot, "utf8")) as {
+        complete: boolean;
+        documentType: string;
+      };
+      expect(installedSnapshot.documentType).toBe("uleravo.artifact-snapshot");
+      expect(installedSnapshot.complete).toBe(true);
 
       const sarif = path.join(temporaryRoot, "uleravo.sarif");
       const report = path.join(temporaryRoot, "uleravo.json");
@@ -182,6 +211,7 @@ describe("packed release", () => {
       await Promise.all(
         [
           sarif,
+          artifactSnapshot,
           report,
           provenanceReport,
           comparison,

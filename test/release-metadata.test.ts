@@ -2,9 +2,16 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { formatJson } from "../src/formatters/json.js";
 import { readScanReport } from "../src/reports/read.js";
 import { scan } from "../src/scanner/scan.js";
-import { PRODUCT_NAME, PRODUCT_SLUG, PRODUCT_URL, VERSION } from "../src/version.js";
+import {
+  MCP_ANALYZER_VERSION,
+  PRODUCT_NAME,
+  PRODUCT_SLUG,
+  PRODUCT_URL,
+  VERSION,
+} from "../src/version.js";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -81,5 +88,18 @@ describe("release metadata", () => {
       id: regenerated.scan.id,
       target: regenerated.scan.target,
     });
+    expect(MCP_ANALYZER_VERSION).toBe("0.6.3");
+    expect(regenerated.scanner.version).toBe(MCP_ANALYZER_VERSION);
+    expect(regenerated.scan.id).toBe("0d9da546d979ba36e7931f89");
+    expect(
+      formatJson({
+        ...regenerated,
+        scan: {
+          ...regenerated.scan,
+          durationMs: report.scan.durationMs,
+          generatedAt: report.scan.generatedAt,
+        },
+      }),
+    ).toBe(formatJson(report));
   });
 });

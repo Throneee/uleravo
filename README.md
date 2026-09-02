@@ -15,6 +15,10 @@ Uleravo is the public-beta name after a preliminary exact, near-name, namespace,
 
 The release core is licensed Apache-2.0 and ships from the exact disclosure-safe export described by `release/public-export.json`. The GitHub Action uses immutable commit pins, and the default `pnpm check` gate includes the separate publication check. External availability begins when this exact history is pushed to the public remote. Do not interpret the future product direction as a claim that those capabilities already exist.
 
+### Unreleased v0.7 developer branch
+
+The `codex/v0.7-artifact-foundation` branch contains an additive, local-only Agent Skill snapshot prototype. It records a bounded raw-byte artifact closure and declared `SKILL.md` metadata without executing the Skill. It deliberately marks capability normalization as unsupported and harness permissions as unavailable. This is development evidence, not part of the reviewed v0.6.3 public package or a trust decision. See [the v0.7 snapshot contract](docs/v0.7-artifact-snapshots.md).
+
 ## What it does
 
 Uleravo scans JavaScript, TypeScript, and Python MCP implementations, package manifests, MCP client configuration, and common text configuration. It currently detects:

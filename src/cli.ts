@@ -6,9 +6,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { resolveSkillRoot } from "./artifacts/discovery.js";
-import type { ArtifactSnapshot } from "./artifacts/domain.js";
-import { snapshotSkill } from "./artifacts/snapshot.js";
+import type { ArtifactKind, ArtifactSnapshot } from "./artifacts/domain.js";
+import { snapshotPluginWithRoot, snapshotSkillWithRoot } from "./artifacts/snapshot.js";
 import { compareReports, type ReportComparison } from "./comparison.js";
 import {
   type Finding,
@@ -109,7 +108,7 @@ interface CompareCommand {
 interface SnapshotCommand {
   readonly action: "snapshot";
   readonly format: SnapshotOutputFormat;
-  readonly kind: "skill";
+  readonly kind: ArtifactKind;
   readonly maxFileBytes: number;
   readonly maxFiles: number;
   readonly maxTotalBytes: number;
@@ -184,15 +183,20 @@ async function runComparison(command: CompareCommand): Promise<number> {
 }
 
 async function runSnapshot(command: SnapshotCommand): Promise<number> {
-  if (command.output !== undefined) {
-    await assertOutputOutsideRoot(command.output, await resolveSkillRoot(command.target));
-  }
-  const snapshot = await snapshotSkill(command.target, {
+  const options = {
     maxFileBytes: command.maxFileBytes,
     maxFiles: command.maxFiles,
     maxTotalBytes: command.maxTotalBytes,
     ...(command.repository === undefined ? {} : { repository: command.repository }),
-  });
+  };
+  const capture =
+    command.kind === "skill"
+      ? await snapshotSkillWithRoot(command.target, options)
+      : await snapshotPluginWithRoot(command.target, options);
+  if (command.output !== undefined) {
+    await assertOutputOutsideRoot(command.output, capture.root);
+  }
+  const { snapshot } = capture;
   await emitSnapshotOutput(
     renderSnapshot(snapshot, command.format),
     command.output,
@@ -374,8 +378,8 @@ function parseSnapshotCommand(
   if (parsed.positionals.length > 1) {
     throw new Error("The snapshot command accepts at most one target.");
   }
-  if (parsed.values.kind !== "skill") {
-    throw new Error("The snapshot command currently requires --kind skill.");
+  if (parsed.values.kind !== "skill" && parsed.values.kind !== "plugin") {
+    throw new Error("The snapshot command requires --kind skill or --kind plugin.");
   }
   const repository = parseRepositoryOptions(
     parsed.values["repository-url"],
@@ -384,7 +388,7 @@ function parseSnapshotCommand(
   return {
     action: "snapshot",
     format: parseSnapshotFormat(parsed.values.format),
-    kind: "skill",
+    kind: parsed.values.kind,
     maxFileBytes: parsePositiveInteger(parsed.values["max-file-bytes"], "--max-file-bytes"),
     maxFiles: parsePositiveInteger(parsed.values["max-files"], "--max-files"),
     maxTotalBytes: parsePositiveInteger(parsed.values["max-total-bytes"], "--max-total-bytes"),
@@ -575,7 +579,9 @@ async function emitSnapshotOutput(
   }
   await writeNewFileAtomically(destination, content);
   if (format === "text") {
-    process.stdout.write(`Report written to ${destination}\n`);
+    process.stdout.write(
+      `Report written to ${boundedRedactedEvidence(destination, 1_000, "[path withheld]")}\n`,
+    );
   }
 }
 
@@ -670,7 +676,7 @@ function isAlreadyExistsError(error: unknown): boolean {
 }
 
 function helpText(): string {
-  return `${PRODUCT_NAME} ${VERSION}\n\nUsage:\n  ${PRODUCT_SLUG} scan [target] [options]\n  ${PRODUCT_SLUG} compare <baseline.json> <current.json> [options]\n  ${PRODUCT_SLUG} snapshot [target] --kind skill [options]\n  ${PRODUCT_SLUG} keygen --private-key <path> --public-key <path>\n  ${PRODUCT_SLUG} sign <report.json> --private-key <path> [-o <path>]\n  ${PRODUCT_SLUG} verify <signed-report.json> --public-key <path> [-o <report.json>]\n\nScan options:\n  -f, --format <text|json|sarif>  Output format (default: text)\n  -o, --output <path>             Write the report atomically\n      --fail-on <severity|none>    Exit 1 at or above a severity (default: none)\n      --exclude <path>             Exclude a relative path; repeatable\n      --max-file-bytes <bytes>     Per-file safety limit (default: 1000000)\n      --repository-url <https>     Repository source URL for provenance\n      --commit-sha <hash>          Complete Git commit for provenance\n\nSnapshot options:\n      --kind skill                 Snapshot one local Agent Skill\n  -f, --format <text|json>         Output format (default: text)\n  -o, --output <path>              Write the snapshot atomically\n      --max-file-bytes <bytes>     Per-file safety limit (default: 10000000)\n      --max-files <count>          Artifact file limit (default: 1000)\n      --max-total-bytes <bytes>    Aggregate safety limit (default: 50000000)\n      --repository-url <https>     Optional, user-supplied repository URL\n      --commit-sha <hash>          Optional, user-supplied complete commit\n\nCompare options:\n  -f, --format <text|json>         Output format (default: text)\n  -o, --output <path>              Write the comparison atomically\n      --fail-on <severity|none>     Exit 1 for newly added findings only\n\nSigning options:\n      --private-key <path>         Ed25519 PKCS#8 private key (sign)\n      --public-key <path>          Ed25519 SPKI public key (verify)\n  -o, --output <path>              Write the envelope or recovered report\n\nGeneral options:\n  -h, --help                       Show this help\n  -v, --version                    Show the version\n\nExit codes:\n  0  Operation completed and threshold passed\n  1  Findings met the configured threshold\n  2  Usage, incomplete snapshot, scan, report, signature, or rule error\n`;
+  return `${PRODUCT_NAME} ${VERSION}\n\nUsage:\n  ${PRODUCT_SLUG} scan [target] [options]\n  ${PRODUCT_SLUG} compare <baseline.json> <current.json> [options]\n  ${PRODUCT_SLUG} snapshot [target] --kind <skill|plugin> [options]\n  ${PRODUCT_SLUG} keygen --private-key <path> --public-key <path>\n  ${PRODUCT_SLUG} sign <report.json> --private-key <path> [-o <path>]\n  ${PRODUCT_SLUG} verify <signed-report.json> --public-key <path> [-o <report.json>]\n\nScan options:\n  -f, --format <text|json|sarif>  Output format (default: text)\n  -o, --output <path>             Write the report atomically\n      --fail-on <severity|none>    Exit 1 at or above a severity (default: none)\n      --exclude <path>             Exclude a relative path; repeatable\n      --max-file-bytes <bytes>     Per-file safety limit (default: 1000000)\n      --repository-url <https>     Repository source URL for provenance\n      --commit-sha <hash>          Complete Git commit for provenance\n\nSnapshot options:\n      --kind <skill|plugin>        Snapshot one local Skill or Plugin\n  -f, --format <text|json>         Output format (default: text)\n  -o, --output <path>              Write the snapshot atomically\n      --max-file-bytes <bytes>     Per-file safety limit (default: 10000000)\n      --max-files <count>          Artifact file limit (default: 1000)\n      --max-total-bytes <bytes>    Aggregate safety limit (default: 50000000)\n      --repository-url <https>     Optional, user-supplied repository URL\n      --commit-sha <hash>          Optional, user-supplied complete commit\n\nCompare options:\n  -f, --format <text|json>         Output format (default: text)\n  -o, --output <path>              Write the comparison atomically\n      --fail-on <severity|none>     Exit 1 for newly added findings only\n\nSigning options:\n      --private-key <path>         Ed25519 PKCS#8 private key (sign)\n      --public-key <path>          Ed25519 SPKI public key (verify)\n  -o, --output <path>              Write the envelope or recovered report\n\nGeneral options:\n  -h, --help                       Show this help\n  -v, --version                    Show the version\n\nExit codes:\n  0  Operation completed and threshold passed\n  1  Findings met the configured threshold\n  2  Usage, incomplete snapshot, scan, report, signature, or rule error\n`;
 }
 
 export async function isMainEntrypoint(

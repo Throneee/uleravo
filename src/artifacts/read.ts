@@ -14,9 +14,12 @@ import type {
   ArtifactDiagnosticCode,
   ArtifactEvidenceReference,
   ArtifactEvidenceSource,
+  ArtifactKind,
+  ArtifactManifestClaims,
   ArtifactRepositoryClaims,
   ArtifactSnapshot,
   ArtifactValueClaim,
+  PluginManifestClaims,
   SkillManifestClaims,
 } from "./domain.js";
 import {
@@ -45,6 +48,7 @@ const MAX_ANALYZER_CHARACTERS = 200;
 const MAX_READER_ERROR_CHARACTERS = 1_000;
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 const SNAPSHOT_ID_PATTERN = /^[a-f0-9]{24}$/;
+const PLUGIN_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const CONTENT_DOMAIN = Buffer.from("uleravo-artifact-content-v1\0", "utf8");
 const OBSERVATION_DOMAIN = Buffer.from("uleravo-artifact-observation-v1\0", "utf8");
 const SNAPSHOT_DOMAIN = Buffer.from("uleravo-artifact-snapshot-v1\0", "utf8");
@@ -144,7 +148,7 @@ export function parseArtifactSnapshot(
     "snapshot",
   ]);
   expectLiteral(root.documentType, "uleravo.artifact-snapshot", `${label}.documentType`);
-  expectLiteral(root.schemaVersion, "1.0.0", `${label}.schemaVersion`);
+  const schemaVersion = expectLiteral(root.schemaVersion, "1.0.0", `${label}.schemaVersion`);
   if (typeof root.complete !== "boolean") {
     invalid(`${label}.complete`, "must be a boolean");
   }
@@ -164,16 +168,16 @@ export function parseArtifactSnapshot(
     snapshot,
   });
 
-  return {
-    artifact,
+  const envelope = {
     closure,
     complete: root.complete,
     coverage,
     diagnostics,
     documentType: "uleravo.artifact-snapshot",
-    schemaVersion: "1.0.0",
+    schemaVersion,
     snapshot,
-  };
+  } as const;
+  return artifact.kind === "skill" ? { artifact, ...envelope } : { artifact, ...envelope };
 }
 
 async function readBoundedStableRegularFile(resolved: string, label: string): Promise<Buffer> {
@@ -267,10 +271,8 @@ function parseArtifact(value: unknown, location: string): ArtifactSnapshot["arti
     ["adapter", "identity", "kind", "manifest"],
     ["repository"],
   );
-  expectLiteral(object.kind, "skill", `${location}.kind`);
-
+  const kind = parseArtifactKind(object.kind, `${location}.kind`);
   const adapter = exactObject(object.adapter, `${location}.adapter`, ["name", "version"]);
-  expectLiteral(adapter.name, "openai-skill", `${location}.adapter.name`);
   expectLiteral(adapter.version, "1.0.0", `${location}.adapter.version`);
 
   const identity = exactObject(object.identity, `${location}.identity`, [
@@ -290,21 +292,37 @@ function parseArtifact(value: unknown, location: string): ArtifactSnapshot["arti
     invalid(`${location}.identity.mutable`, "must be the inferred mutable value true");
   }
 
-  const manifest = parseManifest(object.manifest, `${location}.manifest`);
   const repository =
     object.repository === undefined
       ? undefined
       : parseRepository(object.repository, `${location}.repository`);
+  if (kind === "skill") {
+    expectLiteral(adapter.name, "openai-skill", `${location}.adapter.name`);
+    return {
+      adapter: { name: "openai-skill", version: "1.0.0" },
+      identity: { contentSha256, mutable },
+      kind,
+      manifest: parseManifest(object.manifest, `${location}.manifest`, kind),
+      ...(repository === undefined ? {} : { repository }),
+    };
+  }
+  expectLiteral(adapter.name, "openai-plugin", `${location}.adapter.name`);
   return {
-    adapter: { name: "openai-skill", version: "1.0.0" },
+    adapter: { name: "openai-plugin", version: "1.0.0" },
     identity: { contentSha256, mutable },
-    kind: "skill",
-    manifest,
+    kind,
+    manifest: parseManifest(object.manifest, `${location}.manifest`, kind),
     ...(repository === undefined ? {} : { repository }),
   };
 }
 
-function parseManifest(value: unknown, location: string): SkillManifestClaims {
+function parseManifest(value: unknown, location: string, kind: "skill"): SkillManifestClaims;
+function parseManifest(value: unknown, location: string, kind: "plugin"): PluginManifestClaims;
+function parseManifest(
+  value: unknown,
+  location: string,
+  kind: ArtifactKind,
+): ArtifactManifestClaims {
   const object = exactObject(value, location, ["description", "name", "path", "version"]);
   const description = parseClaim(object.description, `${location}.description`, {
     kind: "string",
@@ -312,17 +330,14 @@ function parseManifest(value: unknown, location: string): SkillManifestClaims {
   });
   const name = parseClaim(object.name, `${location}.name`, {
     kind: "string",
-    maximum: MAX_ARTIFACT_CLAIM_CHARACTERS,
+    maximum: kind === "plugin" ? 256 : MAX_ARTIFACT_CLAIM_CHARACTERS,
   });
-  validateManifestTextClaim(description, `${location}.description`);
-  validateManifestTextClaim(name, `${location}.name`);
-  if (isValueClaim(description) !== isValueClaim(name)) {
-    invalid(location, "name and description claims must resolve together");
-  }
-
-  const manifestPath = parseValueClaim(object.path, `${location}.path`, parseManifestPath);
+  const expectedPath = kind === "skill" ? "SKILL.md" : ".codex-plugin/plugin.json";
+  const manifestPath = parseValueClaim(object.path, `${location}.path`, (candidate, nested) =>
+    parseManifestPath(candidate, nested, expectedPath),
+  );
   assertValueClaimShape(manifestPath, `${location}.path`, {
-    evidence: manifestPath.state === "resolved" ? ["SKILL.md"] : [],
+    evidence: manifestPath.state === "resolved" ? [expectedPath] : [],
     source: "observed",
     state: manifestPath.state,
   });
@@ -333,13 +348,39 @@ function parseManifest(value: unknown, location: string): SkillManifestClaims {
     invalid(`${location}.path`, "must be an observed resolved or unresolved path claim");
   }
 
-  const version = parseAbsentClaim(object.version, `${location}.version`);
-  assertAbsentClaimShape(version, `${location}.version`, {
-    evidence: [],
-    source: "inferred",
-    state: "unavailable",
+  if (kind === "skill") {
+    validateManifestTextClaim(description, `${location}.description`);
+    validateManifestTextClaim(name, `${location}.name`);
+    if (isValueClaim(description) !== isValueClaim(name)) {
+      invalid(location, "name and description claims must resolve together");
+    }
+    const version = parseAbsentClaim(object.version, `${location}.version`);
+    assertAbsentClaimShape(version, `${location}.version`, {
+      evidence: [],
+      source: "inferred",
+      state: "unavailable",
+    });
+    return {
+      description,
+      name,
+      path: manifestPath as SkillManifestClaims["path"],
+      version,
+    };
+  }
+
+  validatePluginManifestClaim(name, `${location}.name`, true, 256);
+  validatePluginManifestClaim(description, `${location}.description`, false, 8_000);
+  const version = parseClaim(object.version, `${location}.version`, {
+    kind: "string",
+    maximum: MAX_ARTIFACT_CLAIM_CHARACTERS,
   });
-  return { description, name, path: manifestPath, version };
+  validatePluginManifestClaim(version, `${location}.version`, false, 256);
+  return {
+    description,
+    name,
+    path: manifestPath as PluginManifestClaims["path"],
+    version,
+  };
 }
 
 function validateManifestTextClaim(claim: ArtifactClaim<string>, location: string): void {
@@ -359,6 +400,29 @@ function validateManifestTextClaim(claim: ArtifactClaim<string>, location: strin
     source: "observed",
     state: "unavailable",
   });
+}
+
+function validatePluginManifestClaim(
+  claim: ArtifactClaim<string>,
+  location: string,
+  pluginName: boolean,
+  unredactedMaximum: number,
+): void {
+  if (!isValueClaim(claim)) {
+    return;
+  }
+  if (claim.value.length === 0 || claim.value.trim() !== claim.value) {
+    invalid(location, "must contain a non-empty trimmed string when resolved");
+  }
+  if (pluginName && claim.redacted !== undefined) {
+    invalid(location, "must resolve to an unredacted plugin identifier");
+  }
+  if (pluginName && !PLUGIN_NAME_PATTERN.test(claim.value)) {
+    invalid(location, "must resolve to a kebab-case plugin identifier");
+  }
+  if (claim.redacted === undefined && claim.value.length > unredactedMaximum) {
+    invalid(location, `exceeds the ${unredactedMaximum.toString()}-character declared limit`);
+  }
 }
 
 function parseRepository(value: unknown, location: string): ArtifactRepositoryClaims {
@@ -483,8 +547,8 @@ function parseDiagnostics(value: unknown, location: string): ArtifactDiagnostic[
       1,
       MAX_DIAGNOSTIC_CHARACTERS,
     );
-    if (object.type !== "error" && object.type !== "warning") {
-      invalid(`${nested}.type`, "must be error or warning");
+    if (object.type !== "error") {
+      invalid(`${nested}.type`, "must be error for the current artifact diagnostic contract");
     }
     const file =
       object.file === undefined ? undefined : parseArtifactPath(object.file, `${nested}.file`);
@@ -592,7 +656,7 @@ function validateObservation(
   fileMetadata: readonly DigestibleClosureFile[],
   filePaths: readonly string[],
 ): string {
-  const observedDigest = artifactDigest(OBSERVATION_DOMAIN, fileMetadata);
+  const observedDigest = artifactDigest(OBSERVATION_DOMAIN, input.artifact.kind, fileMetadata);
   if (input.closure.observedSha256.value !== observedDigest) {
     invalid(
       `${input.label}.closure.observedSha256.value`,
@@ -675,7 +739,7 @@ function validateContentIdentity(
   filePaths: readonly string[],
   closureComplete: boolean,
 ): void {
-  const contentDigest = artifactDigest(CONTENT_DOMAIN, fileMetadata);
+  const contentDigest = artifactDigest(CONTENT_DOMAIN, input.artifact.kind, fileMetadata);
   const contentClaim = input.artifact.identity.contentSha256;
   if (closureComplete) {
     if (!isValueClaim(contentClaim) || contentClaim.value !== contentDigest) {
@@ -711,59 +775,129 @@ function validateManifestState(
   input: CrossFieldInput,
   manifestCoverage: ArtifactClaim<string>,
 ): boolean {
-  const manifestObserved = input.closure.files.some((file) => file.path.value === "SKILL.md");
+  const manifestPath = input.artifact.kind === "skill" ? "SKILL.md" : ".codex-plugin/plugin.json";
+  const manifestObserved = input.closure.files.some((file) => file.path.value === manifestPath);
   if ((input.artifact.manifest.path.state === "resolved") !== manifestObserved) {
     invalid(`${input.label}.artifact.manifest.path`, "does not match the observed closure");
   }
   const manifestComplete = isValueClaim(manifestCoverage) && manifestCoverage.state === "resolved";
   if (manifestComplete) {
-    assertValueClaimShape(manifestCoverage, `${input.label}.coverage.manifest-metadata`, {
-      evidence: ["SKILL.md"],
-      source: "declared",
-      state: "resolved",
-    });
-    if (
-      !isValueClaim(input.artifact.manifest.name) ||
-      !isValueClaim(input.artifact.manifest.description) ||
-      input.artifact.manifest.path.state !== "resolved"
-    ) {
-      invalid(`${input.label}.artifact.manifest`, "does not match resolved manifest coverage");
-    }
+    validateResolvedManifestState(input, manifestCoverage, manifestPath);
   } else {
-    if (isValueClaim(manifestCoverage)) {
-      invalid(`${input.label}.coverage.manifest-metadata`, "must be resolved or unavailable");
-    }
-    assertAbsentClaimShape(manifestCoverage, `${input.label}.coverage.manifest-metadata`, {
-      evidence: [],
-      source: "observed",
-      state: "unavailable",
-    });
-    if (
-      isValueClaim(input.artifact.manifest.name) ||
-      isValueClaim(input.artifact.manifest.description)
-    ) {
-      invalid(`${input.label}.artifact.manifest`, "does not match unavailable manifest coverage");
-    }
+    validateUnavailableManifestState(input, manifestCoverage);
   }
   validateManifestDiagnosticState(input, manifestComplete);
   return manifestComplete;
 }
 
+function validateResolvedManifestState(
+  input: CrossFieldInput,
+  manifestCoverage: ArtifactValueClaim<string>,
+  manifestPath: string,
+): void {
+  assertValueClaimShape(manifestCoverage, `${input.label}.coverage.manifest-metadata`, {
+    evidence: [manifestPath],
+    source: "declared",
+    state: "resolved",
+  });
+  if (input.artifact.manifest.path.state !== "resolved") {
+    invalid(`${input.label}.artifact.manifest`, "does not match resolved manifest coverage");
+  }
+  if (input.artifact.kind === "plugin") {
+    validateResolvedPluginManifest(input, manifestPath);
+    return;
+  }
+  if (
+    !isValueClaim(input.artifact.manifest.name) ||
+    !isValueClaim(input.artifact.manifest.description)
+  ) {
+    invalid(`${input.label}.artifact.manifest`, "does not match resolved manifest coverage");
+  }
+}
+
+function validateUnavailableManifestState(
+  input: CrossFieldInput,
+  manifestCoverage: ArtifactClaim<string>,
+): void {
+  if (isValueClaim(manifestCoverage)) {
+    invalid(`${input.label}.coverage.manifest-metadata`, "must be resolved or unavailable");
+  }
+  assertAbsentClaimShape(manifestCoverage, `${input.label}.coverage.manifest-metadata`, {
+    evidence: [],
+    source: "observed",
+    state: "unavailable",
+  });
+  const claims: readonly (readonly [string, ArtifactClaim<string>])[] = [
+    ["name", input.artifact.manifest.name],
+    ["description", input.artifact.manifest.description],
+    ...(input.artifact.kind === "plugin"
+      ? ([["version", input.artifact.manifest.version]] as const)
+      : []),
+  ];
+  if (claims.some(([, claim]) => isValueClaim(claim))) {
+    invalid(`${input.label}.artifact.manifest`, "does not match unavailable manifest coverage");
+  }
+  for (const [name, claim] of claims) {
+    assertAbsentClaimShape(claim, `${input.label}.artifact.manifest.${name}`, {
+      evidence: [],
+      source: "observed",
+      state: "unavailable",
+    });
+  }
+}
+
+function validateResolvedPluginManifest(input: CrossFieldInput, manifestPath: string): void {
+  if (input.artifact.kind !== "plugin") {
+    invalid(`${input.label}.artifact.kind`, "must identify a plugin");
+  }
+  const manifest = input.artifact.manifest as PluginManifestClaims;
+  if (!isValueClaim(manifest.name)) {
+    invalid(`${input.label}.artifact.manifest.name`, "must resolve for a complete plugin manifest");
+  }
+  for (const [name, claim] of [
+    ["name", manifest.name],
+    ["description", manifest.description],
+    ["version", manifest.version],
+  ] as const) {
+    if (!isValueClaim(claim)) {
+      invalid(`${input.label}.artifact.manifest.${name}`, "must resolve with plugin identity");
+    }
+    assertValueClaimShape(claim, `${input.label}.artifact.manifest.${name}`, {
+      evidence: [manifestPath],
+      source: "declared",
+      state: "resolved",
+    });
+  }
+}
+
 function validateManifestDiagnosticState(input: CrossFieldInput, manifestComplete: boolean): void {
+  const diagnosticPrefix = input.artifact.kind === "skill" ? "SKILL_" : "PLUGIN_";
+  const foreignPrefix = input.artifact.kind === "skill" ? "PLUGIN_" : "SKILL_";
+  if (input.diagnostics.some((diagnostic) => diagnostic.code.startsWith(foreignPrefix))) {
+    invalid(
+      `${input.label}.diagnostics`,
+      "contains a manifest diagnostic for another artifact kind",
+    );
+  }
   const manifestErrors = input.diagnostics.filter(
-    (diagnostic) => diagnostic.type === "error" && diagnostic.code.startsWith("SKILL_"),
+    (diagnostic) => diagnostic.type === "error" && diagnostic.code.startsWith(diagnosticPrefix),
   );
   if ((manifestErrors.length === 0) !== manifestComplete || manifestErrors.length > 1) {
-    invalid(`${input.label}.coverage.manifest-metadata`, "does not match skill diagnostic state");
+    invalid(
+      `${input.label}.coverage.manifest-metadata`,
+      "does not match manifest diagnostic state",
+    );
   }
   const diagnostic = manifestErrors[0];
+  const missingCode =
+    input.artifact.kind === "skill" ? "SKILL_MANIFEST_MISSING" : "PLUGIN_MANIFEST_MISSING";
+  const invalidCode =
+    input.artifact.kind === "skill" ? "SKILL_MANIFEST_INVALID" : "PLUGIN_MANIFEST_INVALID";
   if (
-    (diagnostic?.code === "SKILL_MANIFEST_MISSING" &&
-      input.artifact.manifest.path.state !== "unresolved") ||
-    (diagnostic?.code === "SKILL_MANIFEST_INVALID" &&
-      input.artifact.manifest.path.state !== "resolved")
+    (diagnostic?.code === missingCode && input.artifact.manifest.path.state !== "unresolved") ||
+    (diagnostic?.code === invalidCode && input.artifact.manifest.path.state !== "resolved")
   ) {
-    invalid(`${input.label}.artifact.manifest.path`, "does not match its skill diagnostic code");
+    invalid(`${input.label}.artifact.manifest.path`, "does not match its manifest diagnostic code");
   }
 }
 
@@ -950,12 +1084,16 @@ function parseTrue(value: unknown, location: string): true {
   return true;
 }
 
-function parseManifestPath(value: unknown, location: string): "SKILL.md" {
+function parseManifestPath<T extends "SKILL.md" | ".codex-plugin/plugin.json">(
+  value: unknown,
+  location: string,
+  expected: T,
+): T {
   const parsed = parseArtifactPath(value, location);
-  if (parsed !== "SKILL.md") {
-    invalid(location, "must be SKILL.md");
+  if (parsed !== expected) {
+    invalid(location, `must be ${expected}`);
   }
-  return "SKILL.md";
+  return expected;
 }
 
 function parseDiagnosticCode(value: unknown, location: string): ArtifactDiagnosticCode {
@@ -1060,6 +1198,13 @@ function expectLiteral<T extends string>(value: unknown, expected: T, location: 
   return expected;
 }
 
+function parseArtifactKind(value: unknown, location: string): ArtifactKind {
+  if (value !== "plugin" && value !== "skill") {
+    invalid(location, "must be plugin or skill");
+  }
+  return value;
+}
+
 function isCoverageArea(value: unknown): value is CoverageArea {
   return typeof value === "string" && (COVERAGE_AREAS as readonly string[]).includes(value);
 }
@@ -1098,9 +1243,13 @@ function normalizeRepository(
   return { commit, url: url.href.replace(/\/$/, "") };
 }
 
-function artifactDigest(domain: Buffer, files: readonly DigestibleClosureFile[]): string {
+function artifactDigest(
+  domain: Buffer,
+  kind: ArtifactKind,
+  files: readonly DigestibleClosureFile[],
+): string {
   const hash = createHash("sha256").update(domain);
-  updateLengthPrefixed(hash, "skill");
+  updateLengthPrefixed(hash, kind);
   for (const file of files) {
     updateLengthPrefixed(hash, file.path);
     updateUnsignedLength(hash, file.bytes);
@@ -1159,7 +1308,7 @@ function invalid(location: string, reason: string): never {
   throw new Error(`${location} ${reason}.`);
 }
 
-function validateJsonStructure(serialized: string, label: string): void {
+export function validateJsonStructure(serialized: string, label: string): void {
   try {
     new JsonStructureValidator(serialized).validate();
   } catch (error) {
@@ -1310,7 +1459,7 @@ class JsonStructureValidator {
     this.index += 1;
     try {
       const decoded = JSON.parse(this.source.slice(start, this.index)) as unknown;
-      if (typeof decoded !== "string") {
+      if (typeof decoded !== "string" || !isWellFormedUnicode(decoded)) {
         throw new JsonStructureError("syntax");
       }
       return decoded;

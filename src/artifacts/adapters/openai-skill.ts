@@ -32,7 +32,7 @@ type ParsedValue<T> =
   | { readonly error: string; readonly value?: never };
 
 export const openAiSkillAdapter: SkillAdapter = {
-  analyze(discovery: ArtifactDiscoveryResult): SkillAdapterAnalysis {
+  analyze(discovery: ArtifactDiscoveryResult<"skill">): SkillAdapterAnalysis {
     return analyzeOpenAiSkill(discovery);
   },
   kind: "skill",
@@ -41,7 +41,7 @@ export const openAiSkillAdapter: SkillAdapter = {
   version: "1.0.0",
 };
 
-function analyzeOpenAiSkill(discovery: ArtifactDiscoveryResult): SkillAdapterAnalysis {
+function analyzeOpenAiSkill(discovery: ArtifactDiscoveryResult<"skill">): SkillAdapterAnalysis {
   const manifestFile = discovery.files.find((file) => file.relativePath === MANIFEST_PATH);
   const parsed = manifestFile === undefined ? missingManifest() : parseSkillManifest(manifestFile);
   const pathClaim: ArtifactValueClaim<"SKILL.md"> = {

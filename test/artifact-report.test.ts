@@ -2,8 +2,8 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
-import type { ArtifactSnapshot } from "../src/artifacts/domain.js";
+import { afterEach, describe, expect, expectTypeOf, it } from "vitest";
+import type { ArtifactDiagnostic, ArtifactSnapshot } from "../src/artifacts/domain.js";
 import { parseArtifactSnapshot, readArtifactSnapshot } from "../src/artifacts/read.js";
 import { snapshotSkill } from "../src/artifacts/snapshot.js";
 import { redactEvidence } from "../src/redact.js";
@@ -172,12 +172,14 @@ describe("artifact snapshot report reader", () => {
     ["bidirectional control", "assets/unsafe\u202e.txt"],
     ["unpaired surrogate", "assets/unsafe\ud800.txt"],
     ["sensitive credential", `assets/sk-${"A".repeat(24)}.txt`],
-  ])("rejects a %s closure path", async (_label, invalidPath) => {
+  ])("rejects a %s closure path", async (label, invalidPath) => {
     const root = mutableClone(await snapshotSkill(minimalSkill));
     const firstFile = objectValue(arrayValue(objectValue(root, "closure"), "files")[0]);
     objectValue(firstFile, "path").value = invalidPath;
 
-    expect(() => parseArtifactSnapshot(JSON.stringify(root))).toThrow(/normalized portable/u);
+    expect(() => parseArtifactSnapshot(JSON.stringify(root))).toThrow(
+      label === "unpaired surrogate" ? /not valid JSON/u : /normalized portable/u,
+    );
   });
 
   it("enforces string, array, and safe-integer bounds", async () => {
@@ -278,19 +280,26 @@ describe("artifact snapshot report reader", () => {
   });
 
   it("keeps closure and repository schema fields value-claim-only", async () => {
+    expectTypeOf<ArtifactDiagnostic["type"]>().toEqualTypeOf<"error">();
     const schema = JSON.parse(
       await readFile(path.join(repositoryRoot, "schemas/artifact-snapshot.schema.json"), "utf8"),
     ) as JsonObject;
     const rootProperties = objectValue(schema, "properties");
-    const artifactProperties = objectValue(objectValue(rootProperties, "artifact"), "properties");
+    const definitions = objectValue(schema, "$defs");
+    expect(arrayValue(objectValue(rootProperties, "artifact"), "oneOf")).toEqual([
+      { $ref: "#/$defs/skillArtifact" },
+      { $ref: "#/$defs/pluginArtifact" },
+    ]);
     const repositoryProperties = objectValue(
-      objectValue(artifactProperties, "repository"),
+      objectValue(definitions, "artifactRepository"),
       "properties",
     );
     const closureProperties = objectValue(objectValue(rootProperties, "closure"), "properties");
     const fileItems = objectValue(objectValue(closureProperties, "files"), "items");
     const fileProperties = objectValue(fileItems, "properties");
+    const diagnosticProperties = objectValue(objectValue(definitions, "diagnostic"), "properties");
 
+    expect(objectValue(diagnosticProperties, "type")).toEqual({ const: "error" });
     expect(objectValue(fileProperties, "bytes").$ref).toBe("#/$defs/observedResolvedIntegerClaim");
     expect(objectValue(fileProperties, "sha256").$ref).toBe("#/$defs/observedResolvedDigestClaim");
     expect(objectValue(closureProperties, "totalBytes").$ref).toBe(

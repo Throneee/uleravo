@@ -15,6 +15,8 @@ export const ARTIFACT_DIAGNOSTIC_CODES = [
   "ARTIFACT_SENSITIVE_PATH",
   "ARTIFACT_SYMLINK_UNSUPPORTED",
   "ARTIFACT_TOTAL_SIZE_LIMIT",
+  "PLUGIN_MANIFEST_INVALID",
+  "PLUGIN_MANIFEST_MISSING",
   "SKILL_MANIFEST_INVALID",
   "SKILL_MANIFEST_MISSING",
 ] as const;
@@ -28,7 +30,7 @@ export interface ArtifactDiagnostic {
   readonly code: ArtifactDiagnosticCode;
   readonly file?: string;
   readonly message: string;
-  readonly type: "error" | "warning";
+  readonly type: "error";
 }
 
 export const ARTIFACT_EVIDENCE_SOURCES = [
@@ -92,25 +94,48 @@ export interface SkillManifestClaims {
   readonly version: ArtifactAbsentClaim;
 }
 
+export interface PluginManifestClaims {
+  readonly description: ArtifactClaim<string>;
+  readonly name: ArtifactClaim<string>;
+  readonly path: ArtifactValueClaim<".codex-plugin/plugin.json">;
+  readonly version: ArtifactClaim<string>;
+}
+
+export type ArtifactKind = "plugin" | "skill";
+export type ArtifactManifestClaims = PluginManifestClaims | SkillManifestClaims;
+
 export interface ArtifactRepositoryClaims {
   readonly commit: ArtifactValueClaim<string>;
   readonly url: ArtifactValueClaim<string>;
 }
 
-export interface ArtifactSnapshot {
-  readonly artifact: {
-    readonly adapter: {
-      readonly name: "openai-skill";
-      readonly version: "1.0.0";
-    };
-    readonly identity: {
-      readonly contentSha256: ArtifactClaim<string>;
-      readonly mutable: ArtifactValueClaim<true>;
-    };
-    readonly kind: "skill";
-    readonly manifest: SkillManifestClaims;
-    readonly repository?: ArtifactRepositoryClaims;
+interface ArtifactDescriptorBase {
+  readonly identity: {
+    readonly contentSha256: ArtifactClaim<string>;
+    readonly mutable: ArtifactValueClaim<true>;
   };
+  readonly repository?: ArtifactRepositoryClaims;
+}
+
+export interface SkillArtifactDescriptor extends ArtifactDescriptorBase {
+  readonly adapter: {
+    readonly name: "openai-skill";
+    readonly version: "1.0.0";
+  };
+  readonly kind: "skill";
+  readonly manifest: SkillManifestClaims;
+}
+
+export interface PluginArtifactDescriptor extends ArtifactDescriptorBase {
+  readonly adapter: {
+    readonly name: "openai-plugin";
+    readonly version: "1.0.0";
+  };
+  readonly kind: "plugin";
+  readonly manifest: PluginManifestClaims;
+}
+
+interface ArtifactSnapshotBase {
   readonly closure: {
     readonly files: readonly ArtifactClosureFile[];
     readonly observedSha256: ArtifactValueClaim<string>;
@@ -133,6 +158,16 @@ export interface ArtifactSnapshot {
     readonly target: string;
   };
 }
+
+export interface SkillArtifactSnapshot extends ArtifactSnapshotBase {
+  readonly artifact: SkillArtifactDescriptor;
+}
+
+export interface PluginArtifactSnapshot extends ArtifactSnapshotBase {
+  readonly artifact: PluginArtifactDescriptor;
+}
+
+export type ArtifactSnapshot = PluginArtifactSnapshot | SkillArtifactSnapshot;
 
 export interface ArtifactSnapshotOptions {
   readonly maxFileBytes?: number;

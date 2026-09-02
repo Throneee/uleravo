@@ -16,50 +16,7 @@
   ],
   "properties": {
     "artifact": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["adapter", "identity", "kind", "manifest"],
-      "properties": {
-        "adapter": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["name", "version"],
-          "properties": {
-            "name": { "const": "openai-skill" },
-            "version": { "const": "1.0.0" }
-          }
-        },
-        "identity": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["contentSha256", "mutable"],
-          "properties": {
-            "contentSha256": { "$ref": "#/$defs/contentDigestClaim" },
-            "mutable": { "$ref": "#/$defs/mutableClaim" }
-          }
-        },
-        "kind": { "const": "skill" },
-        "manifest": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["description", "name", "path", "version"],
-          "properties": {
-            "description": { "$ref": "#/$defs/stringClaim" },
-            "name": { "$ref": "#/$defs/stringClaim" },
-            "path": { "$ref": "#/$defs/skillManifestPathClaim" },
-            "version": { "$ref": "#/$defs/skillVersionClaim" }
-          }
-        },
-        "repository": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["commit", "url"],
-          "properties": {
-            "commit": { "$ref": "#/$defs/repositoryCommitClaim" },
-            "url": { "$ref": "#/$defs/repositoryUrlClaim" }
-          }
-        }
-      }
+      "oneOf": [{ "$ref": "#/$defs/skillArtifact" }, { "$ref": "#/$defs/pluginArtifact" }]
     },
     "closure": {
       "type": "object",
@@ -177,6 +134,84 @@
     }
   },
   "$defs": {
+    "artifactIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contentSha256", "mutable"],
+      "properties": {
+        "contentSha256": { "$ref": "#/$defs/contentDigestClaim" },
+        "mutable": { "$ref": "#/$defs/mutableClaim" }
+      }
+    },
+    "artifactRepository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "url"],
+      "properties": {
+        "commit": { "$ref": "#/$defs/repositoryCommitClaim" },
+        "url": { "$ref": "#/$defs/repositoryUrlClaim" }
+      }
+    },
+    "skillArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter", "identity", "kind", "manifest"],
+      "properties": {
+        "adapter": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "const": "openai-skill" },
+            "version": { "const": "1.0.0" }
+          }
+        },
+        "identity": { "$ref": "#/$defs/artifactIdentity" },
+        "kind": { "const": "skill" },
+        "manifest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["description", "name", "path", "version"],
+          "properties": {
+            "description": { "$ref": "#/$defs/stringClaim" },
+            "name": { "$ref": "#/$defs/stringClaim" },
+            "path": { "$ref": "#/$defs/skillManifestPathClaim" },
+            "version": { "$ref": "#/$defs/skillVersionClaim" }
+          }
+        },
+        "repository": { "$ref": "#/$defs/artifactRepository" }
+      }
+    },
+    "pluginArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter", "identity", "kind", "manifest"],
+      "properties": {
+        "adapter": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "const": "openai-plugin" },
+            "version": { "const": "1.0.0" }
+          }
+        },
+        "identity": { "$ref": "#/$defs/artifactIdentity" },
+        "kind": { "const": "plugin" },
+        "manifest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["description", "name", "path", "version"],
+          "properties": {
+            "description": { "$ref": "#/$defs/stringClaim" },
+            "name": { "$ref": "#/$defs/stringClaim" },
+            "path": { "$ref": "#/$defs/pluginManifestPathClaim" },
+            "version": { "$ref": "#/$defs/stringClaim" }
+          }
+        },
+        "repository": { "$ref": "#/$defs/artifactRepository" }
+      }
+    },
     "source": {
       "enum": ["declared", "inferred", "observed", "user-supplied"]
     },
@@ -292,6 +327,19 @@
             "source": { "const": "observed" },
             "state": { "enum": ["resolved", "unresolved"] },
             "value": { "const": "SKILL.md" }
+          }
+        }
+      ]
+    },
+    "pluginManifestPathClaim": {
+      "allOf": [
+        { "$ref": "#/$defs/stringValueClaim" },
+        {
+          "type": "object",
+          "properties": {
+            "source": { "const": "observed" },
+            "state": { "enum": ["resolved", "unresolved"] },
+            "value": { "const": ".codex-plugin/plugin.json" }
           }
         }
       ]
@@ -464,13 +512,15 @@
             "ARTIFACT_SENSITIVE_PATH",
             "ARTIFACT_SYMLINK_UNSUPPORTED",
             "ARTIFACT_TOTAL_SIZE_LIMIT",
+            "PLUGIN_MANIFEST_INVALID",
+            "PLUGIN_MANIFEST_MISSING",
             "SKILL_MANIFEST_INVALID",
             "SKILL_MANIFEST_MISSING"
           ]
         },
         "file": { "$ref": "#/$defs/relativePath" },
         "message": { "type": "string", "minLength": 1, "maxLength": 4000 },
-        "type": { "enum": ["error", "warning"] }
+        "type": { "const": "error" }
       }
     }
   }

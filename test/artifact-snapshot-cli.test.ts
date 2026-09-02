@@ -72,6 +72,49 @@ describe("artifact snapshot CLI", () => {
     expect(parsed.complete).toBe(false);
   });
 
+  it("snapshots a Plugin through the public CLI kind", async () => {
+    const workspace = await makeTemporaryDirectory();
+    const plugin = path.join(workspace, "plugin");
+    await mkdir(path.join(plugin, ".codex-plugin"), { recursive: true });
+    await writeFile(
+      path.join(plugin, ".codex-plugin", "plugin.json"),
+      JSON.stringify({
+        description: "A bounded Plugin fixture.",
+        name: "fixture-plugin",
+        version: "1.0.0",
+      }),
+    );
+
+    expect(await main(["snapshot", plugin, "--kind", "plugin", "--format", "json"])).toBe(0);
+    const output = vi.mocked(process.stdout.write).mock.calls.join("");
+    const snapshot = JSON.parse(output) as {
+      artifact: { adapter: { name: string }; kind: string };
+      complete: boolean;
+    };
+    expect(snapshot).toMatchObject({
+      artifact: { adapter: { name: "openai-plugin" }, kind: "plugin" },
+      complete: true,
+    });
+  });
+
+  it("redacts a sensitive snapshot destination from text-mode confirmation", async () => {
+    const workspace = await makeTemporaryDirectory();
+    const plugin = path.join(workspace, "plugin");
+    const credential = `sk-${"Q".repeat(24)}`;
+    const output = path.join(workspace, `${credential}.json`);
+    await mkdir(path.join(plugin, ".codex-plugin"), { recursive: true });
+    await writeFile(
+      path.join(plugin, ".codex-plugin", "plugin.json"),
+      JSON.stringify({ description: "Safe fixture.", name: "safe-plugin", version: "1" }),
+    );
+
+    expect(await main(["snapshot", plugin, "--kind", "plugin", "--output", output])).toBe(0);
+    expect(await readFile(output, "utf8")).toContain("Uleravo artifact snapshot");
+    const confirmation = vi.mocked(process.stdout.write).mock.calls.join("");
+    expect(confirmation).not.toContain(credential);
+    expect(confirmation).toMatch(/redacted/iu);
+  });
+
   it("rejects self-output and preserves deterministic identity for external outputs", async () => {
     const workspace = await makeTemporaryDirectory();
     const skill = path.join(workspace, "skill");
@@ -160,10 +203,10 @@ describe("artifact snapshot CLI", () => {
   });
 
   it("rejects unsupported kinds and unsafe numeric options", async () => {
-    expect(await main(["snapshot", minimalSkill, "--kind", "plugin"])).toBe(2);
+    expect(await main(["snapshot", minimalSkill, "--kind", "archive"])).toBe(2);
     expect(await main(["snapshot", minimalSkill, "--kind", "skill", "--max-files", "0"])).toBe(2);
     expect(vi.mocked(process.stderr.write).mock.calls.join(" ")).toContain(
-      "currently requires --kind skill",
+      "requires --kind skill or --kind plugin",
     );
   });
 });

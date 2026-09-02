@@ -10,6 +10,7 @@ import { artifactContentSha256, artifactObservationSha256 } from "./digest.js";
 import type {
   ArtifactDiagnostic,
   ArtifactDiagnosticCode,
+  ArtifactKind,
   ArtifactSnapshotOptions,
 } from "./domain.js";
 import { MAX_ARTIFACT_DIAGNOSTICS, MAX_ARTIFACT_TARGET_CHARACTERS } from "./domain.js";
@@ -33,11 +34,13 @@ export interface DiscoveredArtifactFile {
   readonly sha256: string;
 }
 
-export interface ArtifactDiscoveryResult {
+export interface ArtifactDiscoveryResult<Kind extends ArtifactKind = ArtifactKind> {
   readonly complete: boolean;
   readonly contentSha256?: string;
   readonly diagnostics: readonly ArtifactDiagnostic[];
+  readonly directories: readonly string[];
   readonly files: readonly DiscoveredArtifactFile[];
+  readonly kind: Kind;
   readonly observedSha256: string;
   readonly root: string;
   readonly target: string;
@@ -53,6 +56,7 @@ interface DiscoveryLimits {
 
 interface MutableDiscoveryState {
   complete: boolean;
+  readonly directories: string[];
   directoriesSeen: number;
   readonly diagnostics: ArtifactDiagnostic[];
   entriesSeen: number;
@@ -74,6 +78,11 @@ interface DirectorySnapshot {
   readonly metadata: Stats;
 }
 
+interface ResolvedArtifactRoot {
+  readonly root: string;
+  readonly snapshot: DirectorySnapshot;
+}
+
 interface DirectoryEnumeration {
   readonly entries: readonly Dirent[];
   readonly snapshot: DirectorySnapshot;
@@ -82,15 +91,28 @@ interface DirectoryEnumeration {
 export async function discoverSkillArtifact(
   requestedTarget: string,
   options: ArtifactSnapshotOptions = {},
-): Promise<ArtifactDiscoveryResult> {
-  const root = await resolveSkillRoot(requestedTarget);
-  const rootSnapshot = await captureDirectorySnapshot(root, root);
-  if (rootSnapshot === undefined) {
-    throw new Error("Skill root must resolve to a stable regular directory.");
-  }
+): Promise<ArtifactDiscoveryResult<"skill">> {
+  return discoverArtifact(requestedTarget, options, "skill", resolveSkillRootSnapshot);
+}
+
+export async function discoverPluginArtifact(
+  requestedTarget: string,
+  options: ArtifactSnapshotOptions = {},
+): Promise<ArtifactDiscoveryResult<"plugin">> {
+  return discoverArtifact(requestedTarget, options, "plugin", resolvePluginRootSnapshot);
+}
+
+async function discoverArtifact<Kind extends ArtifactKind>(
+  requestedTarget: string,
+  options: ArtifactSnapshotOptions,
+  kind: Kind,
+  resolveRoot: (target: string) => Promise<ResolvedArtifactRoot>,
+): Promise<ArtifactDiscoveryResult<Kind>> {
+  const { root, snapshot: rootSnapshot } = await resolveRoot(requestedTarget);
 
   const state: MutableDiscoveryState = {
     complete: true,
+    directories: [],
     directoriesSeen: 1,
     diagnostics: [],
     entriesSeen: 0,
@@ -102,14 +124,18 @@ export async function discoverSkillArtifact(
     totalBytes: 0,
   };
   await walkDirectory(root, state, rootSnapshot);
+  state.directories.sort(compareCodeUnits);
   state.files.sort((left, right) => compareCodeUnits(left.relativePath, right.relativePath));
+  rejectCaseFoldedPathAliases(state);
 
-  const observedSha256 = artifactObservationSha256("skill", state.files);
+  const observedSha256 = artifactObservationSha256(kind, state.files);
   return {
     complete: state.complete,
-    ...(state.complete ? { contentSha256: artifactContentSha256("skill", state.files) } : {}),
+    ...(state.complete ? { contentSha256: artifactContentSha256(kind, state.files) } : {}),
     diagnostics: state.diagnostics,
+    directories: state.directories,
     files: state.files,
+    kind,
     observedSha256,
     root,
     target: artifactDisplayTarget(root),
@@ -126,26 +152,105 @@ export function artifactDisplayTarget(root: string): string {
 }
 
 export async function resolveSkillRoot(requestedTarget: string): Promise<string> {
+  return (await resolveSkillRootSnapshot(requestedTarget)).root;
+}
+
+async function resolveSkillRootSnapshot(requestedTarget: string): Promise<ResolvedArtifactRoot> {
   const requested = path.resolve(requestedTarget);
   const requestedMetadata = await lstat(requested);
   if (requestedMetadata.isSymbolicLink()) {
     throw new Error("Skill target must not be a symbolic link or junction.");
   }
 
-  let root: string;
   if (requestedMetadata.isDirectory()) {
-    root = await realpath(requested);
-  } else if (requestedMetadata.isFile() && path.basename(requested) === "SKILL.md") {
-    root = await realpath(path.dirname(requested));
-  } else {
-    throw new Error("Skill target must be a directory or a file named SKILL.md.");
+    return captureArtifactRoot(requested, "Skill", requestedMetadata);
+  }
+  if (requestedMetadata.isFile() && path.basename(requested) === "SKILL.md") {
+    return captureManifestArtifactRoot(
+      requested,
+      path.dirname(requested),
+      requestedMetadata,
+      "Skill",
+    );
+  }
+  throw new Error("Skill target must be a directory or a file named SKILL.md.");
+}
+
+export async function resolvePluginRoot(requestedTarget: string): Promise<string> {
+  return (await resolvePluginRootSnapshot(requestedTarget)).root;
+}
+
+async function resolvePluginRootSnapshot(requestedTarget: string): Promise<ResolvedArtifactRoot> {
+  const requested = path.resolve(requestedTarget);
+  const requestedMetadata = await lstat(requested);
+  if (requestedMetadata.isSymbolicLink()) {
+    throw new Error("Plugin target must not be a symbolic link or junction.");
   }
 
-  const canonicalRootMetadata = await lstat(root);
-  if (!canonicalRootMetadata.isDirectory() || canonicalRootMetadata.isSymbolicLink()) {
-    throw new Error("Skill root must resolve to a regular directory.");
+  if (requestedMetadata.isDirectory()) {
+    return captureArtifactRoot(requested, "Plugin", requestedMetadata);
   }
-  return root;
+  if (
+    requestedMetadata.isFile() &&
+    path.basename(requested) === "plugin.json" &&
+    path.basename(path.dirname(requested)) === ".codex-plugin"
+  ) {
+    return captureManifestArtifactRoot(
+      requested,
+      path.dirname(path.dirname(requested)),
+      requestedMetadata,
+      "Plugin",
+    );
+  }
+  throw new Error("Plugin target must be a directory or a file named .codex-plugin/plugin.json.");
+}
+
+async function captureArtifactRoot(
+  requestedRoot: string,
+  label: "Plugin" | "Skill",
+  expectedMetadata?: Stats,
+): Promise<ResolvedArtifactRoot> {
+  const snapshot = await captureDirectorySnapshot(requestedRoot, requestedRoot);
+  if (
+    snapshot === undefined ||
+    normalizedAbsolutePath(snapshot.canonicalPath) !== normalizedAbsolutePath(requestedRoot) ||
+    (expectedMetadata !== undefined && !sameOpenedFileSnapshot(expectedMetadata, snapshot.metadata))
+  ) {
+    throw new Error(
+      `${label} root must be a stable regular directory without symbolic-link or junction ancestors.`,
+    );
+  }
+  return { root: snapshot.canonicalPath, snapshot };
+}
+
+async function captureManifestArtifactRoot(
+  requestedManifest: string,
+  requestedRoot: string,
+  manifestBefore: Stats,
+  label: "Plugin" | "Skill",
+): Promise<ResolvedArtifactRoot> {
+  const rootBefore = await captureArtifactRoot(requestedRoot, label);
+  const canonicalManifest = await realpath(requestedManifest);
+  const manifestAfter = await lstat(requestedManifest);
+  const rootAfter = await captureDirectorySnapshot(requestedRoot, requestedRoot);
+  const expectedManifest =
+    label === "Plugin"
+      ? path.join(rootBefore.root, ".codex-plugin", "plugin.json")
+      : path.join(rootBefore.root, "SKILL.md");
+  if (
+    !manifestAfter.isFile() ||
+    manifestAfter.isSymbolicLink() ||
+    !sameOpenedFileSnapshot(manifestBefore, manifestAfter) ||
+    normalizedAbsolutePath(canonicalManifest) !== normalizedAbsolutePath(expectedManifest) ||
+    rootAfter === undefined ||
+    normalizedAbsolutePath(rootAfter.canonicalPath) !== normalizedAbsolutePath(requestedRoot) ||
+    !sameDirectorySnapshot(rootBefore.snapshot, rootAfter)
+  ) {
+    throw new Error(
+      `${label} manifest and root must remain stable without symbolic links or junctions.`,
+    );
+  }
+  return { root: rootAfter.canonicalPath, snapshot: rootAfter };
 }
 
 function normalizeLimits(options: ArtifactSnapshotOptions): DiscoveryLimits {
@@ -357,6 +462,7 @@ async function visitEntry(
       return;
     }
     state.directoriesSeen += 1;
+    state.directories.push(relativePath);
     await walkDirectory(childSnapshot.canonicalPath, state, childSnapshot);
     return;
   }
@@ -560,6 +666,27 @@ function isWithinRoot(root: string, candidate: string): boolean {
 function normalizedAbsolutePath(value: string): string {
   const resolved = path.resolve(value);
   return process.platform === "win32" ? resolved.toLocaleLowerCase("en-US") : resolved;
+}
+
+function rejectCaseFoldedPathAliases(state: MutableDiscoveryState): void {
+  const seen = new Map<string, string>();
+  const paths = [...state.directories, ...state.files.map((file) => file.relativePath)].sort(
+    compareCodeUnits,
+  );
+  for (const artifactPath of paths) {
+    const alias = artifactPath.toLocaleLowerCase("en-US");
+    const previous = seen.get(alias);
+    if (previous !== undefined && previous !== artifactPath) {
+      recordError(
+        state,
+        artifactPath,
+        "ARTIFACT_NON_PORTABLE_PATH",
+        "Artifact contains paths that collide on case-insensitive filesystems.",
+      );
+      continue;
+    }
+    seen.set(alias, artifactPath);
+  }
 }
 
 function diagnosticPath(root: string, candidate: string): string | undefined {

@@ -8,10 +8,17 @@ export type {
   ArtifactEvidenceReference,
   ArtifactEvidenceSource,
   ArtifactEvidenceState,
+  ArtifactKind,
+  ArtifactManifestClaims,
   ArtifactRepositoryClaims,
   ArtifactSnapshot,
   ArtifactSnapshotOptions,
   ArtifactValueClaim,
+  PluginArtifactDescriptor,
+  PluginArtifactSnapshot,
+  PluginManifestClaims,
+  SkillArtifactDescriptor,
+  SkillArtifactSnapshot,
   SkillManifestClaims,
 } from "./artifacts/domain.js";
 export {
@@ -24,7 +31,7 @@ export {
   MAX_ARTIFACT_TARGET_CHARACTERS,
 } from "./artifacts/domain.js";
 export { parseArtifactSnapshot, readArtifactSnapshot } from "./artifacts/read.js";
-export { snapshotSkill } from "./artifacts/snapshot.js";
+export { snapshotPlugin, snapshotSkill } from "./artifacts/snapshot.js";
 export type {
   ComparisonSummary,
   ReportComparison,

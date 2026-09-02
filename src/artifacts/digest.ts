@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { compareCodeUnits } from "../order.js";
-import type { ArtifactDiagnostic } from "./domain.js";
+import type { ArtifactDiagnostic, ArtifactKind } from "./domain.js";
 
 export interface DigestibleArtifactFile {
   readonly bytes: Buffer;
@@ -14,7 +14,7 @@ const OBSERVATION_DOMAIN = Buffer.from("uleravo-artifact-observation-v1\0", "utf
 const SNAPSHOT_DOMAIN = Buffer.from("uleravo-artifact-snapshot-v1\0", "utf8");
 
 export function artifactContentSha256(
-  kind: "skill",
+  kind: ArtifactKind,
   files: readonly DigestibleArtifactFile[],
 ): string {
   const hash = createHash("sha256").update(CONTENT_DOMAIN);
@@ -28,7 +28,7 @@ export function artifactContentSha256(
 }
 
 export function artifactObservationSha256(
-  kind: "skill",
+  kind: ArtifactKind,
   files: readonly DigestibleArtifactFile[],
 ): string {
   const hash = createHash("sha256").update(OBSERVATION_DOMAIN);

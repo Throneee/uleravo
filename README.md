@@ -17,7 +17,7 @@ The release core is licensed Apache-2.0 and ships from the exact disclosure-safe
 
 ### Unreleased v0.7 developer branch
 
-The `codex/v0.7-artifact-foundation` branch contains an additive, local-only Agent Skill snapshot prototype. It records a bounded raw-byte artifact closure and declared `SKILL.md` metadata without executing the Skill. It deliberately marks capability normalization as unsupported and harness permissions as unavailable. This is development evidence, not part of the reviewed v0.6.3 public package or a trust decision. See [the v0.7 snapshot contract](docs/v0.7-artifact-snapshots.md).
+The `codex/v0.7-plugin-artifacts` branch contains additive, local-only Agent Skill and OpenAI Plugin snapshot prototypes. They record bounded raw-byte artifact closures and declared identity metadata without executing Skill code, Plugin hooks, or MCP servers. The Plugin lane also resolves supported component and asset paths only against entries observed during the same bounded capture. Capability normalization remains unsupported and harness permissions remain unavailable. This is development evidence, not part of the reviewed v0.6.3 public package or a trust decision. See [the v0.7 snapshot contract](docs/v0.7-artifact-snapshots.md).
 
 ## What it does
 

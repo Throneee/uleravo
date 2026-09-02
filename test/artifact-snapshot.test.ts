@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { artifactDisplayTarget, collectBoundedEntries } from "../src/artifacts/discovery.js";
+import { isPortableArtifactPath } from "../src/artifacts/path.js";
 import { parseArtifactSnapshot } from "../src/artifacts/read.js";
 import { snapshotSkill } from "../src/artifacts/snapshot.js";
 import { formatArtifactSnapshotText } from "../src/formatters/artifact-snapshot.js";
@@ -22,6 +23,55 @@ afterEach(async () => {
 });
 
 describe("Agent Skill artifact snapshots", () => {
+  it("rejects linked or junction ancestors for directory and exact-manifest targets", async () => {
+    const sourceWorkspace = await makeTemporaryDirectory();
+    const root = path.join(sourceWorkspace, "skill");
+    await mkdir(root);
+    await writeFile(
+      path.join(root, "SKILL.md"),
+      [
+        "---",
+        "name: linked-ancestor-skill",
+        "description: A useful description.",
+        "---",
+        "Instructions.",
+      ].join("\n"),
+    );
+    const aliasWorkspace = await makeTemporaryDirectory();
+    const linkedAncestor = path.join(aliasWorkspace, "linked-ancestor");
+    await symlink(
+      sourceWorkspace,
+      linkedAncestor,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const linkedRoot = path.join(linkedAncestor, path.basename(root));
+
+    await expect(snapshotSkill(linkedRoot)).rejects.toThrow(
+      /without symbolic-link or junction ancestors/u,
+    );
+    await expect(snapshotSkill(path.join(linkedRoot, "SKILL.md"))).rejects.toThrow(
+      /without symbolic-link or junction ancestors/u,
+    );
+  });
+
+  it.each([
+    "CON",
+    "con.txt",
+    "CONIN$",
+    "conout$.txt",
+    "nested/PRN.json",
+    "nested/COM¹",
+    "nested/com².log",
+    "nested/LPT³",
+    "nested/trailing.",
+    "nested/trailing ",
+    "nested/colon:name",
+    "nested/star*name",
+    `nested/${"a".repeat(256)}`,
+  ])("rejects cross-platform hostile path %s", (candidate) => {
+    expect(isPortableArtifactPath(candidate)).toBe(false);
+  });
+
   it("bounds safely escaped artifact display targets", () => {
     const rawTarget = `${"\u007F".repeat(122)}----AKIA${"A".repeat(16)}X`;
     const target = artifactDisplayTarget(path.join("root", rawTarget));

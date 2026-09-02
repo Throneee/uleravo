@@ -4,18 +4,27 @@ import { compareCodeUnits } from "../order.js";
 import { redactEvidence } from "../redact.js";
 import { normalizeRepositoryIdentity } from "../scanner/provenance.js";
 import { ARTIFACT_ANALYZER_VERSION, PRODUCT_NAME } from "../version.js";
+import { openAiPluginAdapter } from "./adapters/openai-plugin.js";
 import { openAiSkillAdapter } from "./adapters/openai-skill.js";
+import type { PluginAdapterAnalysis, SkillAdapterAnalysis } from "./adapters/types.js";
 import { artifactSnapshotId } from "./digest.js";
-import { discoverSkillArtifact } from "./discovery.js";
+import {
+  type ArtifactDiscoveryResult,
+  discoverPluginArtifact,
+  discoverSkillArtifact,
+} from "./discovery.js";
 import type {
   ArtifactAbsentClaim,
   ArtifactClosureFile,
   ArtifactCoverage,
   ArtifactDiagnostic,
+  ArtifactKind,
   ArtifactRepositoryClaims,
   ArtifactSnapshot,
   ArtifactSnapshotOptions,
   ArtifactValueClaim,
+  PluginArtifactSnapshot,
+  SkillArtifactSnapshot,
 } from "./domain.js";
 import {
   MAX_ARTIFACT_CLAIM_CHARACTERS,
@@ -26,10 +35,63 @@ import {
 export async function snapshotSkill(
   requestedTarget: string,
   options: ArtifactSnapshotOptions = {},
-): Promise<ArtifactSnapshot> {
+): Promise<SkillArtifactSnapshot> {
+  return (await snapshotArtifact(requestedTarget, options, "skill")).snapshot;
+}
+
+export async function snapshotPlugin(
+  requestedTarget: string,
+  options: ArtifactSnapshotOptions = {},
+): Promise<PluginArtifactSnapshot> {
+  return (await snapshotArtifact(requestedTarget, options, "plugin")).snapshot;
+}
+
+export async function snapshotSkillWithRoot(
+  requestedTarget: string,
+  options: ArtifactSnapshotOptions = {},
+): Promise<{ readonly root: string; readonly snapshot: SkillArtifactSnapshot }> {
+  return snapshotArtifact(requestedTarget, options, "skill");
+}
+
+export async function snapshotPluginWithRoot(
+  requestedTarget: string,
+  options: ArtifactSnapshotOptions = {},
+): Promise<{ readonly root: string; readonly snapshot: PluginArtifactSnapshot }> {
+  return snapshotArtifact(requestedTarget, options, "plugin");
+}
+
+type ArtifactCapture =
+  | {
+      readonly adapter: typeof openAiPluginAdapter;
+      readonly analysis: PluginAdapterAnalysis;
+      readonly discovery: ArtifactDiscoveryResult<"plugin">;
+      readonly kind: "plugin";
+    }
+  | {
+      readonly adapter: typeof openAiSkillAdapter;
+      readonly analysis: SkillAdapterAnalysis;
+      readonly discovery: ArtifactDiscoveryResult<"skill">;
+      readonly kind: "skill";
+    };
+
+async function snapshotArtifact(
+  requestedTarget: string,
+  options: ArtifactSnapshotOptions,
+  kind: "skill",
+): Promise<{ readonly root: string; readonly snapshot: SkillArtifactSnapshot }>;
+async function snapshotArtifact(
+  requestedTarget: string,
+  options: ArtifactSnapshotOptions,
+  kind: "plugin",
+): Promise<{ readonly root: string; readonly snapshot: PluginArtifactSnapshot }>;
+async function snapshotArtifact(
+  requestedTarget: string,
+  options: ArtifactSnapshotOptions,
+  kind: ArtifactKind,
+): Promise<{ readonly root: string; readonly snapshot: ArtifactSnapshot }> {
   const startedAt = Date.now();
-  const discovery = await discoverSkillArtifact(requestedTarget, options);
-  const analysis = openAiSkillAdapter.analyze(discovery);
+  const capture = await captureArtifact(requestedTarget, options, kind);
+  const { adapter, analysis, discovery } = capture;
   const diagnostics = limitDiagnostics(
     deduplicateDiagnostics(
       [...discovery.diagnostics, ...analysis.diagnostics].sort(compareDiagnostics),
@@ -65,37 +127,31 @@ export async function snapshotSkill(
   const repository =
     options.repository === undefined ? undefined : repositoryClaims(options.repository);
   const id = artifactSnapshotId({
-    adapterVersion: openAiSkillAdapter.version,
+    adapterVersion: adapter.version,
     analyzerVersion: ARTIFACT_ANALYZER_VERSION,
     context: repository === undefined ? "" : `${repository.url.value}\0${repository.commit.value}`,
     diagnostics,
     observationSha256: discovery.observedSha256,
   });
 
-  const snapshot: ArtifactSnapshot = {
-    artifact: {
-      adapter: { name: openAiSkillAdapter.name, version: openAiSkillAdapter.version },
-      identity: {
-        contentSha256:
-          discovery.contentSha256 === undefined
-            ? unavailableContentIdentity()
-            : {
-                evidence: files.map((file) => ({ path: file.path.value })),
-                source: "observed",
-                state: "resolved",
-                value: discovery.contentSha256,
-              },
-        mutable: {
-          evidence: [],
-          source: "inferred",
-          state: "mutable",
-          value: true,
-        },
-      },
-      kind: "skill",
-      manifest: analysis.manifest,
-      ...(repository === undefined ? {} : { repository }),
+  const identity = {
+    contentSha256:
+      discovery.contentSha256 === undefined
+        ? unavailableContentIdentity()
+        : {
+            evidence: files.map((file) => ({ path: file.path.value })),
+            source: "observed" as const,
+            state: "resolved" as const,
+            value: discovery.contentSha256,
+          },
+    mutable: {
+      evidence: [],
+      source: "inferred" as const,
+      state: "mutable" as const,
+      value: true as const,
     },
+  };
+  const envelope = {
     closure: {
       files,
       observedSha256: {
@@ -124,14 +180,59 @@ export async function snapshotSkill(
       id,
       target: discovery.target,
     },
-  };
+  } as const;
+  const snapshot: ArtifactSnapshot =
+    capture.kind === "skill"
+      ? {
+          artifact: {
+            adapter: { name: "openai-skill", version: "1.0.0" },
+            identity,
+            kind: "skill",
+            manifest: capture.analysis.manifest,
+            ...(repository === undefined ? {} : { repository }),
+          },
+          ...envelope,
+        }
+      : {
+          artifact: {
+            adapter: { name: "openai-plugin", version: "1.0.0" },
+            identity,
+            kind: "plugin",
+            manifest: capture.analysis.manifest,
+            ...(repository === undefined ? {} : { repository }),
+          },
+          ...envelope,
+        };
   const reportBytes = Buffer.byteLength(JSON.stringify(snapshot, null, 2), "utf8") + 1;
   if (reportBytes > MAX_ARTIFACT_REPORT_BYTES) {
     throw new Error(
       `Artifact snapshot exceeds the ${MAX_ARTIFACT_REPORT_BYTES.toString()}-byte report limit; lower the file limits or shorten artifact paths.`,
     );
   }
-  return snapshot;
+  return { root: discovery.root, snapshot };
+}
+
+async function captureArtifact(
+  requestedTarget: string,
+  options: ArtifactSnapshotOptions,
+  kind: ArtifactKind,
+): Promise<ArtifactCapture> {
+  if (kind === "skill") {
+    const discovery = await discoverSkillArtifact(requestedTarget, options);
+    return {
+      adapter: openAiSkillAdapter,
+      analysis: openAiSkillAdapter.analyze(discovery),
+      discovery,
+      kind,
+    };
+  }
+  const discovery = await discoverPluginArtifact(requestedTarget, options);
+  return {
+    adapter: openAiPluginAdapter,
+    analysis: openAiPluginAdapter.analyze(discovery),
+    discovery,
+    kind,
+  };
 }
 
 function observedValueClaim<T>(value: T, evidencePath: string): ArtifactValueClaim<T> {
@@ -210,12 +311,16 @@ function limitDiagnostics(
   const preservedDiagnostics = diagnostics.filter(
     (diagnostic) =>
       diagnostic.code === "ARTIFACT_DIAGNOSTIC_LIMIT" ||
+      diagnostic.code === "PLUGIN_MANIFEST_INVALID" ||
+      diagnostic.code === "PLUGIN_MANIFEST_MISSING" ||
       diagnostic.code === "SKILL_MANIFEST_INVALID" ||
       diagnostic.code === "SKILL_MANIFEST_MISSING",
   );
   const otherDiagnostics = diagnostics.filter(
     (diagnostic) =>
       diagnostic.code !== "ARTIFACT_DIAGNOSTIC_LIMIT" &&
+      diagnostic.code !== "PLUGIN_MANIFEST_INVALID" &&
+      diagnostic.code !== "PLUGIN_MANIFEST_MISSING" &&
       diagnostic.code !== "SKILL_MANIFEST_INVALID" &&
       diagnostic.code !== "SKILL_MANIFEST_MISSING",
   );

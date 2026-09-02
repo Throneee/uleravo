@@ -120,6 +120,41 @@ describe("packed release", () => {
       expect(installedSnapshot.documentType).toBe("uleravo.artifact-snapshot");
       expect(installedSnapshot.complete).toBe(true);
 
+      const pluginRoot = path.join(temporaryRoot, "minimal-plugin");
+      await mkdir(path.join(pluginRoot, ".codex-plugin"), { recursive: true });
+      await writeFile(
+        path.join(pluginRoot, ".codex-plugin", "plugin.json"),
+        `${JSON.stringify({
+          description: "A packaged Plugin smoke fixture.",
+          name: "minimal-plugin",
+          version: "1.0.0",
+        })}\n`,
+      );
+      const pluginSnapshot = path.join(temporaryRoot, "plugin.snapshot.json");
+      await runInstalledCli(
+        installedShim,
+        installedCli,
+        [
+          "snapshot",
+          pluginRoot,
+          "--kind",
+          "plugin",
+          "--format",
+          "json",
+          "--output",
+          pluginSnapshot,
+        ],
+        temporaryRoot,
+      );
+      const installedPluginSnapshot = JSON.parse(await readFile(pluginSnapshot, "utf8")) as {
+        artifact: { kind: string };
+        complete: boolean;
+      };
+      expect(installedPluginSnapshot).toMatchObject({
+        artifact: { kind: "plugin" },
+        complete: true,
+      });
+
       const sarif = path.join(temporaryRoot, "uleravo.sarif");
       const report = path.join(temporaryRoot, "uleravo.json");
       const provenanceReport = path.join(temporaryRoot, "uleravo-provenance.json");

@@ -7,6 +7,10 @@ const UNSAFE_DISPLAY_PATTERN = new RegExp(
   "[\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u2028\\u2029\\u202a-\\u202e\\u2066-\\u2069]",
   "u",
 );
+const WINDOWS_RESERVED_CHARACTER_PATTERN = /[<>:"|?*]/u;
+const WINDOWS_DEVICE_NAME_PATTERN =
+  /^(?:AUX|CON|CONIN\$|CONOUT\$|NUL|PRN|COM[1-9\u00b9\u00b2\u00b3]|LPT[1-9\u00b9\u00b2\u00b3])(?:\..*)?$/iu;
+const MAX_ARTIFACT_PATH_SEGMENT_CHARACTERS = 255;
 
 export function isPortableArtifactPath(value: string): boolean {
   return (
@@ -18,7 +22,20 @@ export function isPortableArtifactPath(value: string): boolean {
     !path.posix.isAbsolute(value) &&
     !/^[A-Za-z]:[\\/]/u.test(value) &&
     !containsUnsafeArtifactText(value) &&
-    value.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..")
+    value.split("/").every(isPortableArtifactPathSegment)
+  );
+}
+
+function isPortableArtifactPathSegment(segment: string): boolean {
+  return (
+    segment.length > 0 &&
+    segment.length <= MAX_ARTIFACT_PATH_SEGMENT_CHARACTERS &&
+    segment !== "." &&
+    segment !== ".." &&
+    !WINDOWS_RESERVED_CHARACTER_PATTERN.test(segment) &&
+    !segment.endsWith(".") &&
+    !segment.endsWith(" ") &&
+    !WINDOWS_DEVICE_NAME_PATTERN.test(segment)
   );
 }
 

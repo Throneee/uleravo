@@ -5,12 +5,19 @@ export function formatArtifactSnapshotJson(snapshot: ArtifactSnapshot): string {
 }
 
 export function formatArtifactSnapshotText(snapshot: ArtifactSnapshot): string {
+  const identityLines =
+    snapshot.artifact.kind === "skill"
+      ? [`Skill: ${claimValue(snapshot.artifact.manifest.name)}`]
+      : [
+          `Plugin: ${claimValue(snapshot.artifact.manifest.name)}`,
+          `Version: ${claimValue(snapshot.artifact.manifest.version)}`,
+        ];
   const lines = [
     `Uleravo artifact snapshot ${snapshot.snapshot.id}`,
     `Target: ${snapshot.snapshot.target}`,
     `Kind: ${snapshot.artifact.kind}`,
     `Complete: ${snapshot.complete ? "yes" : "no"}`,
-    `Skill: ${claimValue(snapshot.artifact.manifest.name)}`,
+    ...identityLines,
     `Description: ${claimValue(snapshot.artifact.manifest.description)}`,
     `Content SHA-256: ${claimValue(snapshot.artifact.identity.contentSha256)}`,
     `Observed files: ${snapshot.closure.files.length.toString()}`,

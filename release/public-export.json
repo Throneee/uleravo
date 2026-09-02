@@ -176,7 +176,7 @@
     "docs/reporting-results.md": "88bf0547277d36150c5c81abcc242f20c47ebe9179286d1cf3ac89f8f580b45c",
     "docs/rules.md": "c264a5da7bb360c8c5449d73aa24080e3ff1791d816f864663f6a1a765b99e28",
     "docs/threat-model.md": "6c438855fea84d1436272a99f4eb8940b135e0d487ff9a08f4a29c566352a6d5",
-    "examples/github-actions/uleravo-observe.yml": "1c145fff54e69a8ee802c2fe34b400dfe4fc99f3aa3ba447b591b41480e8e1ed",
+    "examples/github-actions/uleravo-observe.yml": "21c1c544da043166f9e94a674ce8ae3c8f89e2ba9ccb2fe42b092767bb95262b",
     "examples/reports/sample-target/src/index.ts": "74f13c27d9cd94592d5545e622b6e2532b36fa92bad7223f51a20a1a3790a4f6",
     "examples/reports/uleravo.sample.json": "0ddc1a63fe0c1f2722b79c0b9cad665ed733a900641934bfaed83bd1d1206302",
     "package.json": "b4b5f180d91852fe1d48884cd235488306e0a9ece80478d8982c8618751b208e",

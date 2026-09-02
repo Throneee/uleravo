@@ -23,8 +23,8 @@ jobs:
       # Findings are observational. Scanner/configuration errors still fail this step.
       - name: Scan with Uleravo
         id: uleravo
-        # Release preparation: Commit B must replace this with the public Commit A full SHA.
-        uses: OWNER/REPOSITORY@PUBLIC_COMMIT_A
+        # Immutable pin to the reviewed public Commit A distribution.
+        uses: Throneee/uleravo@63f52dadd65960a873aa14067ab014f950fc4ec5
         with:
           target: .
           fail-on: none

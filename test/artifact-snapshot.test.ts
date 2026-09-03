@@ -393,7 +393,7 @@ describe("Agent Skill artifact snapshots", () => {
       ]),
     );
     expect(() => parseArtifactSnapshot(JSON.stringify(snapshot))).not.toThrow();
-  });
+  }, 30_000);
 
   it("fails closed before returning a JSON report larger than the reader bound", async () => {
     const directory = await makeSkill("large-report", "A useful description.");

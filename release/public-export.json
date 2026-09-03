@@ -273,7 +273,7 @@
     "test/artifact-plugin-snapshot.test.ts": "3de09b183b80f56b05093efb1aecc57728ffc000e1156e2faf21ba10614dc55a",
     "test/artifact-report.test.ts": "669b7982e23e584d97c0ef3b9f0de92420f61a4dad941494c81d92184a97031a",
     "test/artifact-snapshot-cli.test.ts": "5cbc7ff452703e0314bbe91d8b6f91261b83b7e983588e986aa9cb0ab4e1796a",
-    "test/artifact-snapshot.test.ts": "2d11512cce2fc7cec64663b811d4416a812c929ce84c5108a278f849925a5681",
+    "test/artifact-snapshot.test.ts": "990765c9b1caddcae3bcf743d710f1c3f65e30d7b630f12e55c985d36b464318",
     "test/cli.test.ts": "7b3703fd28a49f714cde8d646b1b257adefdda0529536b374b81ca5dc6dfeafc",
     "test/codex-harness-cli.test.ts": "fc0bb2e798882760494bc60bcd3037f7c5f157753a7457a674c8295aa6e31f15",
     "test/codex-harness.test.ts": "f31dc7fda20b7e99a2780f843076a477d352e9301cb06014b892cdee36b15e54",

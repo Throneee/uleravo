@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isMainEntrypoint, main } from "../src/cli.js";
 import { formatJson } from "../src/formatters/json.js";
+import { redactEvidence } from "../src/redact.js";
 import { readScanReport } from "../src/reports/read.js";
 import { scan } from "../src/scanner/scan.js";
 
@@ -91,6 +92,28 @@ describe("signing CLI", () => {
 });
 
 describe("CLI entrypoint", () => {
+  it("does not reveal a credential boundary created by error truncation", async () => {
+    const credential = `AKIA${"A".repeat(16)}`;
+    const craftedTarget = path.join(tmpdir(), `${"\u007F".repeat(122)}----${credential}X`);
+
+    expect(await main(["snapshot", craftedTarget, "--kind", "skill"])).toBe(2);
+    const stderr = vi.mocked(process.stderr.write).mock.calls.join(" ");
+    const message = stderr.endsWith("\n") ? stderr.slice(0, -1) : stderr;
+    expect(stderr).not.toContain(credential);
+    expect(redactEvidence(message)).toBe(message);
+  });
+
+  it("preserves the legacy atomic-replace output contract for scans", async () => {
+    const directory = await makeTemporaryDirectory();
+    const reportPath = path.join(directory, "report.json");
+    await writeFile(reportPath, "sentinel\n");
+
+    expect(await main(["scan", fixture, "--format", "json", "--output", reportPath])).toBe(0);
+    const report = await readScanReport(reportPath);
+    expect(report.scanner.version).toBe("0.6.3");
+    expect(await readFile(reportPath, "utf8")).not.toBe("sentinel\n");
+  });
+
   it.runIf(process.platform !== "win32")(
     "recognizes the symlink created by package managers",
     async () => {

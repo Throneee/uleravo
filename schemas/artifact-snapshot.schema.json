@@ -1,0 +1,527 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uleravo.local/schemas/artifact-snapshot-1.0.0.json",
+  "title": "Uleravo artifact snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact",
+    "closure",
+    "complete",
+    "coverage",
+    "diagnostics",
+    "documentType",
+    "schemaVersion",
+    "snapshot"
+  ],
+  "properties": {
+    "artifact": {
+      "oneOf": [{ "$ref": "#/$defs/skillArtifact" }, { "$ref": "#/$defs/pluginArtifact" }]
+    },
+    "closure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files", "observedSha256", "totalBytes"],
+      "properties": {
+        "files": {
+          "type": "array",
+          "maxItems": 10000,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["bytes", "path", "sha256"],
+            "properties": {
+              "bytes": { "$ref": "#/$defs/observedResolvedIntegerClaim" },
+              "path": { "$ref": "#/$defs/pathClaim" },
+              "sha256": { "$ref": "#/$defs/observedResolvedDigestClaim" }
+            }
+          }
+        },
+        "observedSha256": { "$ref": "#/$defs/observedResolvedDigestClaim" },
+        "totalBytes": { "$ref": "#/$defs/observedTotalBytesClaim" }
+      }
+    },
+    "complete": { "type": "boolean" },
+    "coverage": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "uniqueItems": true,
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": { "area": { "const": "artifact-closure" } },
+            "required": ["area"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": { "area": { "const": "capability-normalization" } },
+            "required": ["area"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": { "area": { "const": "harness-permissions" } },
+            "required": ["area"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": { "area": { "const": "manifest-metadata" } },
+            "required": ["area"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["area", "claim"],
+        "properties": {
+          "area": {
+            "enum": [
+              "artifact-closure",
+              "capability-normalization",
+              "harness-permissions",
+              "manifest-metadata"
+            ]
+          },
+          "claim": { "$ref": "#/$defs/stringClaim" }
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "maxItems": 1000,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/diagnostic" }
+    },
+    "documentType": { "const": "uleravo.artifact-snapshot" },
+    "schemaVersion": { "const": "1.0.0" },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["analyzer", "consistency", "durationMs", "generatedAt", "id", "target"],
+      "properties": {
+        "analyzer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+            "version": { "type": "string", "minLength": 1, "maxLength": 200 }
+          }
+        },
+        "consistency": { "const": "best-effort" },
+        "durationMs": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "id": { "type": "string", "pattern": "^[a-f0-9]{24}$" },
+        "target": { "type": "string", "minLength": 1, "maxLength": 1000 }
+      }
+    }
+  },
+  "$defs": {
+    "artifactIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contentSha256", "mutable"],
+      "properties": {
+        "contentSha256": { "$ref": "#/$defs/contentDigestClaim" },
+        "mutable": { "$ref": "#/$defs/mutableClaim" }
+      }
+    },
+    "artifactRepository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "url"],
+      "properties": {
+        "commit": { "$ref": "#/$defs/repositoryCommitClaim" },
+        "url": { "$ref": "#/$defs/repositoryUrlClaim" }
+      }
+    },
+    "skillArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter", "identity", "kind", "manifest"],
+      "properties": {
+        "adapter": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "const": "openai-skill" },
+            "version": { "const": "1.0.0" }
+          }
+        },
+        "identity": { "$ref": "#/$defs/artifactIdentity" },
+        "kind": { "const": "skill" },
+        "manifest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["description", "name", "path", "version"],
+          "properties": {
+            "description": { "$ref": "#/$defs/stringClaim" },
+            "name": { "$ref": "#/$defs/stringClaim" },
+            "path": { "$ref": "#/$defs/skillManifestPathClaim" },
+            "version": { "$ref": "#/$defs/skillVersionClaim" }
+          }
+        },
+        "repository": { "$ref": "#/$defs/artifactRepository" }
+      }
+    },
+    "pluginArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter", "identity", "kind", "manifest"],
+      "properties": {
+        "adapter": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "const": "openai-plugin" },
+            "version": { "const": "1.0.0" }
+          }
+        },
+        "identity": { "$ref": "#/$defs/artifactIdentity" },
+        "kind": { "const": "plugin" },
+        "manifest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["description", "name", "path", "version"],
+          "properties": {
+            "description": { "$ref": "#/$defs/stringClaim" },
+            "name": { "$ref": "#/$defs/stringClaim" },
+            "path": { "$ref": "#/$defs/pluginManifestPathClaim" },
+            "version": { "$ref": "#/$defs/stringClaim" }
+          }
+        },
+        "repository": { "$ref": "#/$defs/artifactRepository" }
+      }
+    },
+    "source": {
+      "enum": ["declared", "inferred", "observed", "user-supplied"]
+    },
+    "evidenceReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativePath" }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "maxItems": 10000,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/evidenceReference" }
+    },
+    "absentClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence", "reason", "source", "state"],
+      "properties": {
+        "evidence": { "$ref": "#/$defs/evidence" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "source": { "$ref": "#/$defs/source" },
+        "state": { "enum": ["unavailable", "unsupported"] }
+      }
+    },
+    "valueClaimBase": {
+      "type": "object",
+      "required": ["evidence", "source", "state", "value"],
+      "properties": {
+        "evidence": { "$ref": "#/$defs/evidence" },
+        "redacted": { "const": true },
+        "source": { "$ref": "#/$defs/source" },
+        "state": {
+          "enum": ["endpoint-unverified", "mutable", "resolved", "unresolved"]
+        }
+      }
+    },
+    "stringValueClaim": {
+      "allOf": [
+        { "$ref": "#/$defs/valueClaimBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["evidence", "source", "state", "value"],
+          "properties": {
+            "evidence": { "$ref": "#/$defs/evidence" },
+            "redacted": { "const": true },
+            "source": { "$ref": "#/$defs/source" },
+            "state": {
+              "enum": ["endpoint-unverified", "mutable", "resolved", "unresolved"]
+            },
+            "value": { "type": "string", "maxLength": 10000 }
+          }
+        }
+      ]
+    },
+    "integerValueClaim": {
+      "allOf": [
+        { "$ref": "#/$defs/valueClaimBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["evidence", "source", "state", "value"],
+          "properties": {
+            "evidence": { "$ref": "#/$defs/evidence" },
+            "redacted": { "const": true },
+            "source": { "$ref": "#/$defs/source" },
+            "state": {
+              "enum": ["endpoint-unverified", "mutable", "resolved", "unresolved"]
+            },
+            "value": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+          }
+        }
+      ]
+    },
+    "booleanValueClaim": {
+      "allOf": [
+        { "$ref": "#/$defs/valueClaimBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["evidence", "source", "state", "value"],
+          "properties": {
+            "evidence": { "$ref": "#/$defs/evidence" },
+            "redacted": { "const": true },
+            "source": { "$ref": "#/$defs/source" },
+            "state": {
+              "enum": ["endpoint-unverified", "mutable", "resolved", "unresolved"]
+            },
+            "value": { "type": "boolean" }
+          }
+        }
+      ]
+    },
+    "stringClaim": {
+      "oneOf": [{ "$ref": "#/$defs/stringValueClaim" }, { "$ref": "#/$defs/absentClaim" }]
+    },
+    "integerClaim": {
+      "oneOf": [{ "$ref": "#/$defs/integerValueClaim" }, { "$ref": "#/$defs/absentClaim" }]
+    },
+    "booleanClaim": {
+      "oneOf": [{ "$ref": "#/$defs/booleanValueClaim" }, { "$ref": "#/$defs/absentClaim" }]
+    },
+    "skillManifestPathClaim": {
+      "allOf": [
+        { "$ref": "#/$defs/stringValueClaim" },
+        {
+          "type": "object",
+          "properties": {
+            "source": { "const": "observed" },
+            "state": { "enum": ["resolved", "unresolved"] },
+            "value": { "const": "SKILL.md" }
+          }
+        }
+      ]
+    },
+    "pluginManifestPathClaim": {
+      "allOf": [
+        { "$ref": "#/$defs/stringValueClaim" },
+        {
+          "type": "object",
+          "properties": {
+            "source": { "const": "observed" },
+            "state": { "enum": ["resolved", "unresolved"] },
+            "value": { "const": ".codex-plugin/plugin.json" }
+          }
+        }
+      ]
+    },
+    "skillVersionClaim": {
+      "allOf": [
+        { "$ref": "#/$defs/absentClaim" },
+        {
+          "type": "object",
+          "properties": {
+            "evidence": { "type": "array", "maxItems": 0 },
+            "source": { "const": "inferred" },
+            "state": { "const": "unavailable" }
+          }
+        }
+      ]
+    },
+    "mutableClaim": {
+      "allOf": [
+        { "$ref": "#/$defs/booleanValueClaim" },
+        {
+          "type": "object",
+          "properties": {
+            "evidence": { "type": "array", "maxItems": 0 },
+            "source": { "const": "inferred" },
+            "state": { "const": "mutable" },
+            "value": { "const": true }
+          }
+        }
+      ]
+    },
+    "observedResolvedDigestClaim": {
+      "allOf": [
+        { "$ref": "#/$defs/digestValueClaim" },
+        {
+          "type": "object",
+          "properties": {
+            "source": { "const": "observed" },
+            "state": { "const": "resolved" }
+          }
+        }
+      ]
+    },
+    "contentDigestClaim": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/observedResolvedDigestClaim"
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/absentClaim" },
+            {
+              "type": "object",
+              "properties": {
+                "source": { "const": "observed" },
+                "state": { "const": "unavailable" }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "digestValueClaim": {
+      "allOf": [
+        { "$ref": "#/$defs/stringValueClaim" },
+        {
+          "type": "object",
+          "properties": {
+            "value": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          }
+        }
+      ]
+    },
+    "pathClaim": {
+      "allOf": [
+        { "$ref": "#/$defs/stringValueClaim" },
+        {
+          "type": "object",
+          "properties": {
+            "source": { "const": "observed" },
+            "state": { "const": "resolved" },
+            "value": { "$ref": "#/$defs/relativePath" }
+          }
+        }
+      ]
+    },
+    "observedResolvedIntegerClaim": {
+      "allOf": [
+        { "$ref": "#/$defs/integerValueClaim" },
+        {
+          "type": "object",
+          "properties": {
+            "source": { "const": "observed" },
+            "state": { "const": "resolved" }
+          }
+        }
+      ]
+    },
+    "observedTotalBytesClaim": {
+      "allOf": [
+        { "$ref": "#/$defs/integerValueClaim" },
+        {
+          "type": "object",
+          "properties": {
+            "source": { "const": "observed" },
+            "state": { "enum": ["resolved", "unresolved"] }
+          }
+        }
+      ]
+    },
+    "repositoryValueClaim": {
+      "allOf": [
+        { "$ref": "#/$defs/stringValueClaim" },
+        {
+          "type": "object",
+          "properties": {
+            "evidence": { "type": "array", "maxItems": 0 },
+            "source": { "const": "user-supplied" },
+            "state": { "const": "endpoint-unverified" }
+          }
+        }
+      ]
+    },
+    "repositoryCommitClaim": {
+      "allOf": [
+        { "$ref": "#/$defs/repositoryValueClaim" },
+        {
+          "type": "object",
+          "properties": {
+            "value": { "type": "string", "pattern": "^(?:[a-f0-9]{40}|[a-f0-9]{64})$" }
+          }
+        }
+      ]
+    },
+    "repositoryUrlClaim": {
+      "allOf": [
+        { "$ref": "#/$defs/repositoryValueClaim" },
+        {
+          "type": "object",
+          "properties": {
+            "value": { "type": "string", "format": "uri", "pattern": "^https://" }
+          }
+        }
+      ]
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000,
+      "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|/)\\.\\.?(?:/|$))[^\\\\\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e\\u200f\\u2028\\u2029\\u202a-\\u202e\\u2066-\\u2069]+$"
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "type"],
+      "properties": {
+        "code": {
+          "enum": [
+            "ARTIFACT_DIRECTORY_CHANGED",
+            "ARTIFACT_DIRECTORY_DEPTH_LIMIT",
+            "ARTIFACT_DIRECTORY_ENUMERATION_FAILED",
+            "ARTIFACT_DIAGNOSTIC_LIMIT",
+            "ARTIFACT_DIRECTORY_LIMIT",
+            "ARTIFACT_ENTRY_LIMIT",
+            "ARTIFACT_FILE_READ_FAILED",
+            "ARTIFACT_FILE_SIZE_LIMIT",
+            "ARTIFACT_LFS_POINTER_UNRESOLVED",
+            "ARTIFACT_NON_PORTABLE_PATH",
+            "ARTIFACT_NON_REGULAR_ENTRY",
+            "ARTIFACT_SENSITIVE_PATH",
+            "ARTIFACT_SYMLINK_UNSUPPORTED",
+            "ARTIFACT_TOTAL_SIZE_LIMIT",
+            "PLUGIN_MANIFEST_INVALID",
+            "PLUGIN_MANIFEST_MISSING",
+            "SKILL_MANIFEST_INVALID",
+            "SKILL_MANIFEST_MISSING"
+          ]
+        },
+        "file": { "$ref": "#/$defs/relativePath" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "type": { "const": "error" }
+      }
+    }
+  }
+}

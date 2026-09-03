@@ -56,6 +56,48 @@ export function redactEvidence(evidence: string): string {
   return escapeUnsafeDisplayCharacters(redacted);
 }
 
+export function redactEvidenceToFixedPoint(evidence: string): string {
+  let candidate = evidence;
+  for (let pass = 0; pass < 16; pass += 1) {
+    const redacted = redactEvidence(candidate);
+    if (redacted === candidate) {
+      return candidate;
+    }
+    candidate = redacted;
+  }
+  return "<redacted>";
+}
+
+export function boundedRedactedEvidence(
+  evidence: string,
+  maximumLength: number,
+  truncationSuffix = "...",
+): string {
+  if (
+    !Number.isSafeInteger(maximumLength) ||
+    maximumLength < "<redacted>".length ||
+    truncationSuffix.length >= maximumLength ||
+    redactEvidenceToFixedPoint(truncationSuffix) !== truncationSuffix
+  ) {
+    throw new Error("Bounded redaction requires a safe length and truncation suffix.");
+  }
+
+  let candidate = redactEvidenceToFixedPoint(evidence);
+  for (let pass = 0; pass < 16; pass += 1) {
+    if (candidate.length <= maximumLength) {
+      return candidate;
+    }
+    candidate = `${sliceWellFormed(candidate, maximumLength - truncationSuffix.length)}${truncationSuffix}`;
+    candidate = redactEvidenceToFixedPoint(candidate);
+  }
+  return "<redacted>";
+}
+
+function sliceWellFormed(value: string, maximum: number): string {
+  const bounded = value.slice(0, maximum);
+  return /[\uD800-\uDBFF]$/u.test(bounded) ? bounded.slice(0, -1) : bounded;
+}
+
 export interface PrivateKeyRange {
   readonly end: number;
   readonly start: number;

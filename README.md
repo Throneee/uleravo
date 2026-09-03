@@ -1,19 +1,24 @@
 # Uleravo
 
-Uleravo is an evidence-first security scanner for Model Context Protocol servers. It finds a narrow set of high-impact problems, reports the source location and redacted evidence that triggered each finding, and produces reports that humans and CI systems can use without executing the target.
+Uleravo is an evidence-first local security tool for agent capabilities. It scans Model Context Protocol servers for a narrow set of high-impact problems, snapshots Agent Skill and Codex Plugin identity, and inventories one bounded Codex configuration harness without executing the target.
 
-This repository contains the local scanner, its stable report contract, and the completed research foundation: reproducible provenance, deterministic rescan comparison, offline signed-report verification, and a bundled GitHub Action. The current deliverable remains a focused MCP analyzer. The approved product direction is a quiet trust layer for agent capabilities, developed without delaying release of the useful scanner that already exists.
+This repository contains the local scanner, its stable MCP report contract, deterministic Skill and Codex Plugin snapshots, a Codex harness snapshot and semantic permission delta, reproducible provenance, offline signed-report verification, and a bundled MCP-focused GitHub Action. These are evidence inputs for human review, not a universal trust verdict or runtime enforcement boundary.
 
 Uleravo is the public-beta name after a preliminary exact, near-name, namespace, common-law, package-registry, domain, and multilingual knockout. This is launch-stage screening, not formal trademark advice; obtain Saudi and international counsel review before filing or major paid promotion.
 
 ## Product status
 
-- **Ready for public beta:** the reviewed v0.6.3 CLI package and bundled GitHub Action source have passed their local release gates.
-- **Launch operation pending in this snapshot:** create and push the public GitHub remote, then promote the production-site release. If you are reading this on the public GitHub repository, the remote step is complete.
-- **Next:** Agent Skills, Agent Plugins, one evidence-selected harness snapshot, semantic capability delta, and advisory trust decisions.
+- **v0.7.0 package:** Agent Skill and Codex Plugin identity snapshots, the v0.6.3 MCP analyzer, and one Codex local-configuration harness with semantic permission delta.
+- **Public repository:** source and immutable releases are published at [`Throneee/uleravo`](https://github.com/Throneee/uleravo).
+- **Compatibility:** the MCP analyzer remains version 0.6.3 so identical MCP inputs retain their established scan IDs; package, artifact-analyzer, and harness-analyzer versions are 0.7.0.
+- **Next:** correlate artifact identity with harness exposure, then add advisory trust decisions without claiming runtime enforcement.
 - **Not current capabilities:** hosted monitoring, organization policy, a trusted enforcement boundary, a dashboard, or runtime protection.
 
-The release core is licensed Apache-2.0 and ships from the exact disclosure-safe export described by `release/public-export.json`. The GitHub Action uses immutable commit pins, and the default `pnpm check` gate includes the separate publication check. External availability begins when this exact history is pushed to the public remote. Do not interpret the future product direction as a claim that those capabilities already exist.
+The release core is licensed Apache-2.0 and ships from the exact disclosure-safe export described by `release/public-export.json`. The GitHub Action uses immutable commit pins, and the default `pnpm check` gate includes the separate publication check. Do not interpret the future product direction as a claim that those capabilities already exist.
+
+### v0.7 agent-security foundation
+
+The artifact adapters record bounded raw-byte closures and declared identity without executing Skill code, Codex Plugin hooks, or MCP servers. The Codex harness parses user `config.toml`, trusted project `.codex/config.toml`, and optional system `requirements.toml` strictly as data; it inventories declared Skills, Codex Plugins, Apps, MCP servers, tools, hooks, filesystem/network scope, and approval posture, then produces a directional semantic permission delta. It never starts Codex or a configured capability and explicitly withholds complete effective-runtime claims when defaults, profiles, session flags, cloud requirements, or runtime discovery are unavailable. See [the artifact snapshot contract](docs/v0.7-artifact-snapshots.md) and [the Codex harness contract](docs/v0.7-codex-harness.md).
 
 ## What it does
 
@@ -36,11 +41,20 @@ Uleravo scans JavaScript, TypeScript, and Python MCP implementations, package ma
 
 Every finding contains a stable fingerprint, source location, redacted evidence, confidence, remediation, and CWE / OWASP / MITRE ATLAS mappings where the mapping is defensible.
 
+v0.7.0 also adds local, deterministic commands for agent artifacts and one harness:
+
+```bash
+uleravo snapshot ./path/to/skill --kind skill --format json
+uleravo snapshot ./path/to/plugin --kind plugin --format json
+uleravo harness ./path/to/project --format json --output current.harness.json
+uleravo harness-delta baseline.harness.json current.harness.json --format text
+```
+
 Use the [rule guide](docs/rules.md) to understand each detector's trigger, safe patterns, and precision boundary. Use the [result-reporting guide](docs/reporting-results.md) to submit a correction without exposing private source or scanner evidence.
 
 ### Current limits
 
-Uleravo v0.6.x is static analysis for MCP implementations. It does not analyze Agent Skills or Agent Plugins, inventory an agent harness, observe runtime behavior, establish publisher identity, prove that a deployed endpoint matches reviewed source, or issue a universal security certification.
+The MCP lane remains the v0.6.3 static analyzer. Artifact snapshots identify bounded local Skill or Codex Plugin bytes and declared metadata, but do not recursively analyze instructions, execute components, establish publisher identity, or prove that a deployed endpoint matches reviewed source. The Codex harness records supported local declarations, not effective runtime state. Uleravo does not correlate an artifact snapshot to harness exposure yet, observe runtime behavior, or issue a universal security certification.
 
 JavaScript and TypeScript analysis follows only the documented one-hop import case; Python analysis is primarily intraprocedural. Medium-confidence filesystem and outbound-request findings may require review. A complete scan means the selected inputs were processed without error diagnostics under the documented analyzer coverage. It does not mean every vulnerability class was analyzed.
 
@@ -48,15 +62,15 @@ Launch materials also cite 25 pinned cases used as internal validation evidence.
 
 ## Install the free beta
 
-Requirements: Node.js 22.13 or newer. Download `uleravo-0.6.3.tgz` and `uleravo-0.6.3.tgz.sha256` from the [official Uleravo launch site](https://uleravo.babanosh.chatgpt.site/), verify the archive, then install and scan locally:
+Requirements: Node.js 22.13 or newer. Download `uleravo-0.7.0.tgz` and `uleravo-0.7.0.tgz.sha256` from the [v0.7.0 GitHub release](https://github.com/Throneee/uleravo/releases/tag/v0.7.0), verify the archive, then install it locally:
 
 ```bash
-sha256sum --check uleravo-0.6.3.tgz.sha256
-npm install --global ./uleravo-0.6.3.tgz
+sha256sum --check uleravo-0.7.0.tgz.sha256
+npm install --global ./uleravo-0.7.0.tgz
 uleravo scan ./path/to/mcp-server
 ```
 
-Published archives are immutable. The v0.6.2 archive and checksum remain available under their original filenames; v0.6.3 is a separate patch release.
+Published archives are immutable. The v0.6.2 and v0.6.3 archives and checksums remain available under their original filenames; v0.7.0 is a separate release and does not replace those bytes.
 
 For source development, use pnpm 11 with `pnpm install --frozen-lockfile` and `pnpm build`.
 
@@ -120,7 +134,7 @@ Keep the private key out of source control and distribute the public key through
 
 ## GitHub Action
 
-The repository includes a Node 24 Action that runs the same scanner without installing dependencies or executing target code. The [observation workflow template](examples/github-actions/uleravo-observe.yml) is publication-ready and pins Uleravo to reviewed Commit A, `63f52dadd65960a873aa14067ab014f950fc4ec5`. The default `pnpm check` gate includes `pnpm check:publication`, which requires that product pin and full 40-hex SHAs for every Action before tagging or publication. The template disables persisted checkout credentials, scans pull requests and pushes to `main`, and requests 30-day retention for redacted JSON and SARIF evidence.
+The repository includes a Node 24 Action that runs the MCP scanner without installing dependencies or executing target code. The [observation workflow template](examples/github-actions/uleravo-observe.yml) pins Uleravo and both third-party Actions to reviewed full 40-hex commit SHAs. The v0.7.0 template pins reviewed product commit `81967c579878fe5dd245bd67a5238e0c5d6ce42f`. The default `pnpm check` gate validates the reference shape; the v0.7.0 release gate is `node scripts/check-publication-ready.mjs --expected-product-sha 81967c579878fe5dd245bd67a5238e0c5d6ce42f`, so a syntactically valid stale product pin cannot pass. The template disables persisted checkout credentials, scans pull requests and pushes to `main`, and requests 30-day retention for redacted JSON and SARIF evidence.
 
 After the first run, use the job summary to confirm completeness, download the evidence artifact, and review critical and high findings first. The [redacted sample report](examples/reports/uleravo.sample.json), generated from a deliberately vulnerable [synthetic target](examples/reports/sample-target/src/index.ts), shows the report fields without exposing real project data.
 
@@ -128,7 +142,7 @@ The scanner uses `fail-on: none`, so findings do not fail an observation run. A 
 
 Observation mode is not a trusted baseline or new-finding enforcement boundary. GitHub shows a SARIF result as a pull-request check annotation only when every reported line is in the pull-request diff and on added or edited lines. Because Uleravo reports the sink that received untrusted input, a changed caller reaching an unchanged sink can fall outside that view. The retained reports remain the complete Uleravo evidence.
 
-Uleravo's scanner and Action do not initiate network requests, use `GITHUB_TOKEN`, or print finding evidence into workflow logs. The example's checkout and artifact-upload steps are separate networked GitHub Actions. At this local launch snapshot, creating and pushing `Throneee/uleravo` is still an operator step, so the pinned reference cannot resolve externally yet; if you are reading this from that public GitHub repository, the dependency is complete and the template is ready to copy. See [the GitHub Action reference](docs/github-action.md) for setup, first-result triage, inputs, outputs, and the exact workspace boundary.
+Uleravo's scanner and Action do not initiate network requests, use `GITHUB_TOKEN`, or print finding evidence into workflow logs. The example's checkout and artifact-upload steps are separate networked GitHub Actions. See [the GitHub Action reference](docs/github-action.md) for setup, first-result triage, inputs, outputs, and the exact workspace boundary.
 
 The CLI returns `0` when the configured threshold passes, `1` when findings meet `--fail-on`, and `2` for usage, scan, or rule failures.
 

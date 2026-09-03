@@ -1,0 +1,64 @@
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+web_search = "cached"
+
+[projects."__PROJECT_ROOT__"]
+trust_level = "trusted"
+
+[sandbox_workspace_write]
+network_access = false
+writable_roots = ["./generated"]
+
+[features]
+apps = true
+computer_use = false
+plugins = true
+
+[[skills.config]]
+path = "./skills/reviewer"
+enabled = true
+
+[apps.github]
+enabled = true
+destructive_enabled = false
+open_world_enabled = true
+default_tools_enabled = false
+default_tools_approval_mode = "prompt"
+
+[apps.github.tools."repos/list"]
+enabled = true
+approval_mode = "auto"
+
+[mcp_servers.local]
+command = "node"
+args = ["must-not-run.mjs", "--token=super-argument-secret-value"]
+enabled = true
+required = false
+enabled_tools = ["inspect"]
+disabled_tools = ["delete"]
+env = { API_KEY = "super-user-secret-value", SAFE_MODE = "true" }
+scopes = ["repo:read"]
+
+[mcp_servers.local.tools.inspect]
+approval_mode = "auto"
+
+[mcp_servers.remote]
+url = "http://127.0.0.1:__PORT__/mcp/sk-proj-abcdefghijklmnopqrstuvwxyz?token=super-query-secret-value&tenant=hidden-tenant"
+enabled = true
+bearer_token_env_var = "MCP_BEARER_TOKEN"
+http_headers = { Authorization = "Bearer super-header-secret-value", X-Tenant = "hidden-header-value" }
+env_http_headers = { X-Key = "MCP_HEADER_TOKEN" }
+scopes = ["documents.read", "documents.write"]
+
+[plugins.audit.mcp_servers.embedded]
+enabled = true
+enabled_tools = ["review"]
+
+[hooks]
+[[hooks.PreToolUse]]
+matcher = "^shell$"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "node must-not-run.mjs --secret super-hook-secret-value"
+async = true

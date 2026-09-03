@@ -1,0 +1,65 @@
+allowed_approval_policies = ["untrusted", "on-request"]
+allowed_approvals_reviewers = ["user"]
+allowed_sandbox_modes = ["read-only", "workspace-write"]
+allowed_web_search_modes = ["disabled", "cached"]
+allow_managed_hooks_only = true
+
+[allowed_permission_profiles]
+":read-only" = true
+":workspace" = true
+":danger-full-access" = false
+
+[permissions.filesystem]
+deny_read = ["**/*.env", "**/credentials.json"]
+
+[experimental_network]
+enabled = true
+domains = { "api.example.com" = "allow", "metadata.internal" = "deny" }
+
+[features]
+computer_use = false
+plugins = true
+
+[features.network_proxy]
+enabled = true
+domains = { "packages.example.com" = "allow", "blocked.example.com" = "deny" }
+allow_local_binding = false
+proxy_url = "http://proxy-user:proxy-secret@127.0.0.1:3128/path?credential=hidden"
+
+[permissions.locked]
+extends = ":read-only"
+workspace_roots = { "./managed" = false }
+
+[permissions.locked.filesystem]
+"**/*.pem" = "deny"
+
+[permissions.locked.network]
+enabled = false
+domains = { "updates.example.com" = "allow", "metadata.example.com" = "deny" }
+dangerously_allow_non_loopback_proxy = false
+
+[apps.github]
+enabled = false
+
+[apps.github.tools."repos/delete"]
+approval_mode = "prompt"
+
+[mcp_servers.remote]
+identity = { url = "http://127.0.0.1:__PORT__/mcp?token=managed-secret" }
+
+[mcp_servers.inline]
+identity = { command = "node --token=managed-inline-secret" }
+
+[plugins.audit.mcp_servers.managed]
+identity = { command = { executable = "node", args = [{ match = "exact", value = "managed-plugin-secret" }] } }
+
+[plugins.audit.mcp_servers.remote]
+identity = { url = { match = "exact", value = "https://user:managed-password@example.com/mcp?token=managed-plugin-token#fragment-secret" } }
+
+[hooks]
+[[hooks.PreToolUse]]
+matcher = "^shell$"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "python managed-policy.py --key managed-hook-secret"

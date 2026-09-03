@@ -1,6 +1,6 @@
 # Rule reference
 
-Uleravo v0.6.3 reports twelve focused risk classes in MCP implementations and configuration. The scanner is static: it does not import or execute target code, start an MCP server, make network requests, or prove that a deployed service matches the scanned source.
+The MCP analyzer shipped in Uleravo v0.7.0 remains version 0.6.3 and reports twelve focused risk classes in MCP implementations and configuration. The scanner is static: it does not import or execute target code, start an MCP server, make network requests, or prove that a deployed service matches the scanned source.
 
 Each finding includes a default severity and confidence. Severity describes the potential impact of the detected pattern. Confidence describes how strongly the supported static pattern establishes the stated risk. A complete scan means that selected inputs were processed without error diagnostics under the documented coverage; it does not mean that every vulnerability class or program path was analyzed.
 

@@ -3,14 +3,16 @@
 ## Assets
 
 - Source code and configuration being scanned
+- Skill and Codex Plugin files being identified and snapshotted
+- Codex user, trusted-project, and managed-requirements configuration being inventoried
 - Credentials accidentally present in those files
-- Integrity of findings, severities, fingerprints, and exit codes
+- Integrity of findings, artifact identities, harness facts, permission deltas, and exit codes
 - Integrity and confidentiality of local report-signing keys
 - Availability of developer workstations and CI runners
 
 ## Trust boundaries
 
-The target is fully untrusted. File names, directory depth, source text, JSON, and AST shape can all be adversarial. Baseline, current, and signed-envelope files are untrusted as well. In GitHub Actions, checked-out source and workflow inputs are untrusted scanner data; the runner-provided environment and command-file paths are trusted. The local process, its installed lockfile, and the public-key distribution channel chosen by the user are trusted. No network service is part of the current product.
+The target is fully untrusted. File names, directory depth, source text, JSON, TOML, YAML, front matter, manifests, and AST shape can all be adversarial. Imported scan reports, artifact snapshots, harness snapshots, comparison inputs, and signed envelopes are untrusted as well. In GitHub Actions, checked-out source and workflow inputs are untrusted scanner data; the runner-provided environment and command-file paths are trusted. A caller-supplied Codex version and trust declaration are recorded claims, not ambient facts discovered by Uleravo. The local process, its installed lockfile, and the public-key distribution channel chosen by the user are trusted. No network service is part of the current product.
 
 ## Controls
 
@@ -26,6 +28,11 @@ The target is fully untrusted. File names, directory depth, source text, JSON, a
 - Detect canonical Git LFS pointers in supported inputs and absent or empty declared submodules without invoking `git` or fetching content.
 - Treat discovered symlinks, unresolved LFS inputs, unmaterialized submodules, skipped scannable inputs, exhausted resource budgets, and zero-file targets as incomplete scans with error diagnostics.
 - Parse source as data; never import it or invoke package scripts.
+- Read Skill instructions, Codex Plugin manifests, and Codex configuration as bounded inert data; never execute scripts or hooks, start MCP servers, launch Codex, follow configured URLs, or perform OAuth.
+- Bind artifact identity to a stable canonical root and bounded raw-byte closure, reject linked roots and discovered links, and label unresolved or endpoint-unverified evidence explicitly.
+- Accept only supported Skill and Codex Plugin layouts, validate imported artifact reports strictly, and keep Skill and Codex Plugin identities kind-separated.
+- Read only explicitly selected Codex configuration layers as regular UTF-8 files, reject read races and malformed TOML, redact secret values while retaining security-relevant key and header names, and refuse semantic deltas over incomplete or applicability-unknown captures.
+- Keep the Codex harness's effective runtime state explicitly unavailable because product defaults, profile files, session overrides, cloud or MDM requirements, installed-artifact discovery, and initialization results are outside the capture.
 - Give every rule an independent failure boundary and surface rule failures as scan errors.
 - Redact recognized credential ranges on the full source line before evidence truncation, then apply format-wide redaction before fingerprinting or writing reports.
 - Redact source-derived paths, metadata, finding messages, and diagnostics; consume complete private-key blocks with a forward-only parser; and escape terminal and bidirectional controls before output.
@@ -48,6 +55,9 @@ The target is fully untrusted. File names, directory depth, source text, JSON, a
 ## Known limitations
 
 - Uleravo assumes the workspace remains stable for the duration of discovery and report writing. Opened regular files are identity-checked and read under the configured byte limits, but Node's path APIs do not provide an atomic recursive directory snapshot or an atomic plan-and-write operation across output ancestors. Scan an immutable checkout and do not concurrently rename target or output directories or replace them with links.
+- Artifact snapshots identify the bounded local bytes and declarations that were observed. They do not recursively analyze Skill instructions or Codex Plugin components, prove publisher identity, validate remote endpoints, or prove that the same bytes were installed or executed elsewhere.
+- The Codex harness supports one documented local configuration model. It does not launch Codex, apply configuration, discover effective defaults or runtime initialization, correlate declared artifacts to loaded instances, or prove that a permission was exercised. Directional deltas describe supported declarations only and carry no vulnerability severity.
+- v0.7.0 does not include a standalone JSON Schema for the deeply nested Codex harness snapshot and delta documents; its reader performs the bounded strict validation used for comparison.
 - Conventional `build`, `dist`, and `out` directories are ignored during a repository-root scan to avoid duplicate generated code. If generated output is the only runtime artifact or can differ materially from source, scan that directory explicitly as the target.
 - Uleravo recognizes canonical Git LFS pointer records and declared submodule directories, but it does not prove that a materialized LFS object or submodule matches an expected remote object ID or commit. Scan an immutable, fully materialized checkout and rely on the checkout boundary for that identity.
 - JavaScript and TypeScript taint tracking is primarily intraprocedural and intentionally narrow. It follows transparent type assertions, non-null assertions, `satisfies` expressions, and one direct call from a recognized handler to a top-level exported function reached through a static named relative ESM import. It does not follow default, namespace, CommonJS, dynamic, or package imports; re-exports; TypeScript path aliases; return flow; arbitrary helper graphs; or second-hop calls, and it can miss complex control flow.

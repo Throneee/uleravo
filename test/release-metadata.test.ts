@@ -2,14 +2,24 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { formatJson } from "../src/formatters/json.js";
 import { readScanReport } from "../src/reports/read.js";
 import { scan } from "../src/scanner/scan.js";
-import { PRODUCT_NAME, PRODUCT_SLUG, PRODUCT_URL, VERSION } from "../src/version.js";
+import {
+  ARTIFACT_ANALYZER_VERSION,
+  HARNESS_ANALYZER_VERSION,
+  MCP_ANALYZER_VERSION,
+  PACKAGE_VERSION,
+  PRODUCT_NAME,
+  PRODUCT_SLUG,
+  PRODUCT_URL,
+  VERSION,
+} from "../src/version.js";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("release metadata", () => {
-  it("keeps the v0.6.3 release contract aligned", async () => {
+  it("keeps the v0.7.0 release contract aligned without changing legacy MCP identities", async () => {
     const packageMetadata = JSON.parse(
       await readFile(path.join(repositoryRoot, "package.json"), "utf8"),
     ) as {
@@ -31,7 +41,10 @@ describe("release metadata", () => {
     expect(PRODUCT_NAME).toBe("Uleravo");
     expect(PRODUCT_SLUG).toBe("uleravo");
     expect(PRODUCT_URL).toBe("https://github.com/Throneee/uleravo");
-    expect(VERSION).toBe("0.6.3");
+    expect(VERSION).toBe("0.7.0");
+    expect(PACKAGE_VERSION).toBe(VERSION);
+    expect(ARTIFACT_ANALYZER_VERSION).toBe("0.7.0");
+    expect(HARNESS_ANALYZER_VERSION).toBe("0.7.0");
     expect(packageMetadata.name).toBe(PRODUCT_SLUG);
     expect(packageMetadata.version).toBe(VERSION);
     expect(packageMetadata.private).toBe(true);
@@ -67,7 +80,7 @@ describe("release metadata", () => {
     );
     const regenerated = await scan(sampleTarget);
 
-    expect(report.scanner).toEqual({ name: PRODUCT_NAME, version: VERSION });
+    expect(report.scanner).toEqual({ name: PRODUCT_NAME, version: MCP_ANALYZER_VERSION });
     expect(report.findings).toHaveLength(3);
     expect(report.summary).toMatchObject({ critical: 1, high: 2, total: 3 });
     expect(report.findings.find((finding) => finding.ruleId === "MCP007")?.evidence).toContain(
@@ -81,5 +94,18 @@ describe("release metadata", () => {
       id: regenerated.scan.id,
       target: regenerated.scan.target,
     });
+    expect(MCP_ANALYZER_VERSION).toBe("0.6.3");
+    expect(regenerated.scanner.version).toBe(MCP_ANALYZER_VERSION);
+    expect(regenerated.scan.id).toBe("0d9da546d979ba36e7931f89");
+    expect(
+      formatJson({
+        ...regenerated,
+        scan: {
+          ...regenerated.scan,
+          durationMs: report.scan.durationMs,
+          generatedAt: report.scan.generatedAt,
+        },
+      }),
+    ).toBe(formatJson(report));
   });
 });

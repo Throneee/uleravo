@@ -21,13 +21,30 @@ afterEach(async () => {
 
 describe("final publication gate", () => {
   it("accepts exactly three full-SHA Action pins including Uleravo", async () => {
-    const result = await runPublicationCheck([
-      `        uses: actions/checkout@${"1".repeat(40)}`,
-      `        uses: Throneee/uleravo@${"2".repeat(40)}`,
-      `        uses: actions/upload-artifact@${"3".repeat(40)}`,
-    ]);
+    const productSha = "2".repeat(40);
+    const result = await runPublicationCheck(
+      [
+        `        uses: actions/checkout@${"1".repeat(40)}`,
+        `        uses: Throneee/uleravo@${productSha}`,
+        `        uses: actions/upload-artifact@${"3".repeat(40)}`,
+      ],
+      productSha,
+    );
 
     expect(result.stdout).toContain("Final publication Action pins validated.");
+  });
+
+  it("rejects a product pin that is not the reviewed release commit", async () => {
+    await expect(
+      runPublicationCheck(
+        [
+          `        uses: actions/checkout@${"1".repeat(40)}`,
+          `        uses: Throneee/uleravo@${"2".repeat(40)}`,
+          `        uses: actions/upload-artifact@${"3".repeat(40)}`,
+        ],
+        "4".repeat(40),
+      ),
+    ).rejects.toThrow(/must pin the reviewed Uleravo commit/);
   });
 
   it("rejects the staged Commit A placeholder", async () => {
@@ -44,7 +61,7 @@ describe("final publication gate", () => {
     await expect(
       runPublicationCheck([
         `        uses: actions/checkout@${"1".repeat(40)}`,
-        "        uses: Throneee/uleravo@v0.6.3",
+        "        uses: Throneee/uleravo@v0.7.0",
         `        uses: actions/upload-artifact@${"3".repeat(40)}`,
       ]),
     ).rejects.toThrow(/full 40-hex commit SHA/);
@@ -59,7 +76,7 @@ describe("final publication gate", () => {
   });
 });
 
-async function runPublicationCheck(referenceLines: readonly string[]) {
+async function runPublicationCheck(referenceLines: readonly string[], expectedProductSha?: string) {
   const directory = await mkdtemp(path.join(tmpdir(), "uleravo-publication-test-"));
   temporaryDirectories.push(directory);
   await mkdir(path.join(directory, "scripts"));
@@ -74,7 +91,10 @@ async function runPublicationCheck(referenceLines: readonly string[]) {
   );
   return execFileAsync(
     process.execPath,
-    [path.join(directory, "scripts", "check-publication-ready.mjs")],
+    [
+      path.join(directory, "scripts", "check-publication-ready.mjs"),
+      ...(expectedProductSha === undefined ? [] : ["--expected-product-sha", expectedProductSha]),
+    ],
     {
       encoding: "utf8",
     },

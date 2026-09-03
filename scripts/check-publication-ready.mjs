@@ -8,12 +8,13 @@ const repositoryRoot = path.resolve(path.dirname(scriptPath), "..");
 const workflowPath = path.join(repositoryRoot, "examples", "github-actions", "uleravo-observe.yml");
 const expectedProductPrefix = "Throneee/uleravo@";
 
-await main().catch((error) => {
+await main(process.argv.slice(2)).catch((error) => {
   process.stderr.write(`publication check: ${safeErrorMessage(error)}\n`);
   process.exitCode = 1;
 });
 
-async function main() {
+async function main(argv) {
+  const expectedProductSha = parseExpectedProductSha(argv);
   const workflow = await readFile(workflowPath, "utf8");
   const references = [...workflow.matchAll(/^[^\S\r\n]*uses:[^\S\r\n]+([^\s#]+)/gmu)].map(
     (match) => match[1],
@@ -35,7 +36,31 @@ async function main() {
   if (productReferences.length !== 1) {
     throw new Error("The observation workflow must pin exactly one Throneee/uleravo Action.");
   }
+  if (
+    expectedProductSha !== undefined &&
+    productReferences[0] !== `${expectedProductPrefix}${expectedProductSha}`
+  ) {
+    throw new Error(
+      `The observation workflow must pin the reviewed Uleravo commit ${expectedProductSha}.`,
+    );
+  }
   process.stdout.write("Final publication Action pins validated.\n");
+}
+
+function parseExpectedProductSha(argv) {
+  if (argv.length === 0) {
+    return undefined;
+  }
+  if (
+    argv.length !== 2 ||
+    argv[0] !== "--expected-product-sha" ||
+    !/^[0-9a-f]{40}$/u.test(argv[1] ?? "")
+  ) {
+    throw new Error(
+      "Usage: node scripts/check-publication-ready.mjs [--expected-product-sha <40-hex-sha>]",
+    );
+  }
+  return argv[1];
 }
 
 function safeErrorMessage(error) {

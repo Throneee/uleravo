@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 const execFileAsync = promisify(execFile);
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageName = "uleravo";
-const packageVersion = "0.6.3";
+const packageVersion = "0.7.0";
 const archiveName = `${packageName}-${packageVersion}.tgz`;
 
 describe("packed release", () => {
@@ -83,7 +83,13 @@ describe("packed release", () => {
         "---\nname: minimal-skill\ndescription: A packaged-command smoke fixture.\n---\n\nInspect the supplied local input.\n",
       );
       await Promise.all([access(installedShim), access(installedCli)]);
-      await runInstalledCli(installedShim, installedCli, ["--version"], temporaryRoot);
+      const versionResult = await runInstalledCli(
+        installedShim,
+        installedCli,
+        ["--version"],
+        temporaryRoot,
+      );
+      expect(String(versionResult.stdout).trim()).toBe(packageVersion);
       await runInstalledCli(
         installedShim,
         installedCli,
@@ -116,9 +122,11 @@ describe("packed release", () => {
       const installedSnapshot = JSON.parse(await readFile(artifactSnapshot, "utf8")) as {
         complete: boolean;
         documentType: string;
+        snapshot: { analyzer: { version: string } };
       };
       expect(installedSnapshot.documentType).toBe("uleravo.artifact-snapshot");
       expect(installedSnapshot.complete).toBe(true);
+      expect(installedSnapshot.snapshot.analyzer.version).toBe(packageVersion);
 
       const pluginRoot = path.join(temporaryRoot, "minimal-plugin");
       await mkdir(path.join(pluginRoot, ".codex-plugin"), { recursive: true });
@@ -149,11 +157,80 @@ describe("packed release", () => {
       const installedPluginSnapshot = JSON.parse(await readFile(pluginSnapshot, "utf8")) as {
         artifact: { kind: string };
         complete: boolean;
+        snapshot: { analyzer: { version: string } };
       };
       expect(installedPluginSnapshot).toMatchObject({
         artifact: { kind: "plugin" },
         complete: true,
+        snapshot: { analyzer: { version: packageVersion } },
       });
+
+      const baselineConfig = path.join(temporaryRoot, "baseline-codex.toml");
+      const currentConfig = path.join(temporaryRoot, "current-codex.toml");
+      const baselineHarness = path.join(temporaryRoot, "baseline.harness.json");
+      const currentHarness = path.join(temporaryRoot, "current.harness.json");
+      const harnessDelta = path.join(temporaryRoot, "harness.delta.json");
+      await Promise.all([
+        writeFile(baselineConfig, 'sandbox_mode = "read-only"\n'),
+        writeFile(currentConfig, 'sandbox_mode = "danger-full-access"\n'),
+      ]);
+      for (const [config, output] of [
+        [baselineConfig, baselineHarness],
+        [currentConfig, currentHarness],
+      ] as const) {
+        await runInstalledCli(
+          installedShim,
+          installedCli,
+          [
+            "harness",
+            temporaryRoot,
+            "--user-config",
+            config,
+            "--skip-project-config",
+            "--skip-requirements",
+            "--codex-version",
+            "0.138.0",
+            "--format",
+            "json",
+            "--output",
+            output,
+          ],
+          temporaryRoot,
+        );
+      }
+      await runInstalledCli(
+        installedShim,
+        installedCli,
+        [
+          "harness-delta",
+          baselineHarness,
+          currentHarness,
+          "--format",
+          "json",
+          "--output",
+          harnessDelta,
+        ],
+        temporaryRoot,
+      );
+      const installedHarness = JSON.parse(await readFile(currentHarness, "utf8")) as {
+        documentType: string;
+        harness: { analyzer: { version: string } };
+      };
+      const installedHarnessDelta = JSON.parse(await readFile(harnessDelta, "utf8")) as {
+        changes: Array<{ direction: string; key: string }>;
+        documentType: string;
+      };
+      expect(installedHarness).toMatchObject({
+        documentType: "uleravo.harness-snapshot",
+        harness: { analyzer: { version: packageVersion } },
+      });
+      expect(installedHarnessDelta.documentType).toBe("uleravo.harness-delta");
+      expect(installedHarnessDelta.changes).toContainEqual(
+        expect.objectContaining({
+          direction: "expanded",
+          key: "filesystem.sandbox-mode",
+        }),
+      );
 
       const sarif = path.join(temporaryRoot, "uleravo.sarif");
       const report = path.join(temporaryRoot, "uleravo.json");
@@ -247,6 +324,9 @@ describe("packed release", () => {
         [
           sarif,
           artifactSnapshot,
+          baselineHarness,
+          currentHarness,
+          harnessDelta,
           report,
           provenanceReport,
           comparison,
@@ -312,12 +392,11 @@ async function runInstalledCli(
   installedCli: string,
   args: readonly string[],
   cwd: string,
-): Promise<void> {
+) {
   if (process.platform === "win32") {
-    await run(process.execPath, [installedCli, ...args], cwd);
-    return;
+    return run(process.execPath, [installedCli, ...args], cwd);
   }
-  await run(installedShim, args, cwd);
+  return run(installedShim, args, cwd);
 }
 
 async function run(
@@ -325,9 +404,10 @@ async function run(
   args: readonly string[],
   cwd: string,
   environment: NodeJS.ProcessEnv = {},
-): Promise<void> {
-  await execFileAsync(entrypoint, [...args], {
+) {
+  return execFileAsync(entrypoint, [...args], {
     cwd,
+    encoding: "utf8",
     env: { ...process.env, ...environment, NO_UPDATE_NOTIFIER: "1" },
     maxBuffer: 10 * 1024 * 1024,
   });

@@ -47,7 +47,9 @@ Copy this template into a public issue only after completing the sanitization st
 
 - Type: false positive | detection gap | rule correction | incomplete-scan problem
 - Rule ID: MCP___
-- Uleravo version: 0.6.3
+- Uleravo package version: 0.7.0
+- Analyzer version shown in the affected report: 0.6.3 (MCP) or 0.7.0 (artifact/harness)
+- Document schema version shown in the affected report: 1.0.0
 - Installation: GitHub Action | local development build
 - Action commit SHA, if applicable: <public Uleravo Action commit>
 - Language or file type: JavaScript | TypeScript | Python | JSON | YAML | TOML | other

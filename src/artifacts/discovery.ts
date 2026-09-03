@@ -5,6 +5,7 @@ import { lstat, open, opendir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { compareCodeUnits } from "../order.js";
 import { boundedRedactedEvidence, redactEvidence } from "../redact.js";
+import { captureSafeDirectory } from "../safe-directory.js";
 import { sameOpenedFileSnapshot, samePathAndOpenedFileSnapshot } from "../scanner/files.js";
 import { artifactContentSha256, artifactObservationSha256 } from "./digest.js";
 import type {
@@ -210,10 +211,9 @@ async function captureArtifactRoot(
   label: "Plugin" | "Skill",
   expectedMetadata?: Stats,
 ): Promise<ResolvedArtifactRoot> {
-  const snapshot = await captureDirectorySnapshot(requestedRoot, requestedRoot);
+  const snapshot = await captureSafeDirectory(requestedRoot);
   if (
     snapshot === undefined ||
-    normalizedAbsolutePath(snapshot.canonicalPath) !== normalizedAbsolutePath(requestedRoot) ||
     (expectedMetadata !== undefined && !sameOpenedFileSnapshot(expectedMetadata, snapshot.metadata))
   ) {
     throw new Error(
@@ -232,7 +232,7 @@ async function captureManifestArtifactRoot(
   const rootBefore = await captureArtifactRoot(requestedRoot, label);
   const canonicalManifest = await realpath(requestedManifest);
   const manifestAfter = await lstat(requestedManifest);
-  const rootAfter = await captureDirectorySnapshot(requestedRoot, requestedRoot);
+  const rootAfter = await captureSafeDirectory(requestedRoot);
   const expectedManifest =
     label === "Plugin"
       ? path.join(rootBefore.root, ".codex-plugin", "plugin.json")
@@ -243,7 +243,6 @@ async function captureManifestArtifactRoot(
     !sameOpenedFileSnapshot(manifestBefore, manifestAfter) ||
     normalizedAbsolutePath(canonicalManifest) !== normalizedAbsolutePath(expectedManifest) ||
     rootAfter === undefined ||
-    normalizedAbsolutePath(rootAfter.canonicalPath) !== normalizedAbsolutePath(requestedRoot) ||
     !sameDirectorySnapshot(rootBefore.snapshot, rootAfter)
   ) {
     throw new Error(

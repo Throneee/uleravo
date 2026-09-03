@@ -6,6 +6,7 @@ import path from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { compareCodeUnits } from "../order.js";
 import { boundedRedactedEvidence } from "../redact.js";
+import { captureSafeDirectory } from "../safe-directory.js";
 import { HARNESS_ANALYZER_VERSION, PRODUCT_NAME } from "../version.js";
 import {
   CODEX_HARNESS_ADAPTER_VERSION,
@@ -102,7 +103,9 @@ export async function snapshotCodexHarness(
   options: CodexHarnessSnapshotOptions = {},
 ): Promise<CodexHarnessSnapshot> {
   const maxConfigBytes = normalizeConfigLimit(options.maxConfigBytes);
-  const projectRoot = await canonicalProjectDirectory(requestedProject);
+  const requestedProjectRoot = path.resolve(requestedProject);
+  const projectRoot = await canonicalProjectDirectory(requestedProjectRoot);
+  const requestedProjectAlias = await safeWindowsProjectAlias(requestedProjectRoot, projectRoot);
   const diagnostics: CodexHarnessDiagnostic[] = [];
 
   const userRequest = resolveUserConfigRequest(options);
@@ -114,7 +117,7 @@ export async function snapshotCodexHarness(
     loadLayer(requirementsRequest, maxConfigBytes, diagnostics),
   ]);
 
-  const trust = resolveProjectTrust(user.data, projectRoot);
+  const trust = resolveProjectTrust(user.data, projectRoot, requestedProjectAlias);
   const projectConfigApplicability = resolveProjectConfigApplicability(project, trust);
   const userApplicability: CodexHarnessApplicability =
     user.layer.status === "parsed" ? "applied" : "unknown";
@@ -321,6 +324,18 @@ async function canonicalProjectDirectory(requested: string): Promise<string> {
   return await realpath(resolved);
 }
 
+async function safeWindowsProjectAlias(
+  requestedProjectRoot: string,
+  canonicalProjectRoot: string,
+): Promise<string | undefined> {
+  if (process.platform !== "win32") return undefined;
+  const snapshot = await captureSafeDirectory(requestedProjectRoot);
+  return snapshot !== undefined &&
+    pathIdentity(snapshot.canonicalPath) === pathIdentity(canonicalProjectRoot)
+    ? requestedProjectRoot
+    : undefined;
+}
+
 async function loadLayer(
   request: LayerRequest,
   maximumBytes: number,
@@ -503,6 +518,7 @@ async function readStableFile(
 function resolveProjectTrust(
   userConfig: TomlObject | undefined,
   projectRoot: string,
+  requestedProjectAlias: string | undefined,
 ): CodexInventoryValue<"trusted" | "untrusted"> {
   const projects = asObject(userConfig?.projects);
   if (projects === undefined) {
@@ -513,7 +529,13 @@ function resolveProjectTrust(
     const project = asObject(value);
     const trustLevel = project?.trust_level;
     if (trustLevel !== "trusted" && trustLevel !== "untrusted") continue;
-    if (!sameConfiguredPath(declaredPath, projectRoot)) continue;
+    if (
+      !sameConfiguredPath(declaredPath, projectRoot) &&
+      (requestedProjectAlias === undefined ||
+        !sameConfiguredPath(declaredPath, requestedProjectAlias))
+    ) {
+      continue;
+    }
     matches.push({
       evidence: { key: `projects.${keyLabel(declaredPath)}.trust_level`, layer: "user-config" },
       state: "declared",

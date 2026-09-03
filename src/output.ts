@@ -1,13 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { Stats } from "node:fs";
-import { link, lstat, open, realpath, unlink } from "node:fs/promises";
+import { link, lstat, open, unlink } from "node:fs/promises";
 import path from "node:path";
+import { captureSafeDirectory, type SafeDirectorySnapshot } from "./safe-directory.js";
 import { sameOpenedFileSnapshot } from "./scanner/files.js";
-
-interface SafeDirectorySnapshot {
-  readonly canonicalPath: string;
-  readonly metadata: Stats;
-}
 
 export async function assertOutputOutsideRoot(
   destination: string,
@@ -25,7 +20,8 @@ export async function writeNewFileAtomically(destination: string, content: strin
   const resolved = path.resolve(destination);
   const parentPath = path.dirname(resolved);
   const parentBefore = await captureSafeOutputParent(parentPath);
-  await requireAbsent(resolved, "Refusing to overwrite an existing output path.");
+  const canonicalDestination = path.join(parentBefore.canonicalPath, path.basename(resolved));
+  await requireAbsent(canonicalDestination, "Refusing to overwrite an existing output path.");
 
   const temporary = path.join(
     parentBefore.canonicalPath,
@@ -50,11 +46,14 @@ export async function writeNewFileAtomically(destination: string, content: strin
     if (!sameSafeDirectory(parentBefore, parentBeforePublish)) {
       throw new Error("Output parent changed before the report could be published.");
     }
-    await requireAbsent(resolved, "Refusing to overwrite an output path created concurrently.");
+    await requireAbsent(
+      canonicalDestination,
+      "Refusing to overwrite an output path created concurrently.",
+    );
 
-    await link(temporary, resolved);
+    await link(temporary, canonicalDestination);
     const [publishedTemporaryMetadata, destinationMetadata, parentAfterPublish] = await Promise.all(
-      [lstat(temporary), lstat(resolved), captureSafeOutputParent(parentPath)],
+      [lstat(temporary), lstat(canonicalDestination), captureSafeOutputParent(parentPath)],
     );
     if (
       !destinationMetadata.isFile() ||
@@ -76,19 +75,13 @@ export async function writeNewFileAtomically(destination: string, content: strin
 
 async function captureSafeOutputParent(parentPath: string): Promise<SafeDirectorySnapshot> {
   const resolvedParent = path.resolve(parentPath);
-  const before = await lstat(resolvedParent);
-  if (!before.isDirectory() || before.isSymbolicLink()) {
-    throw new Error("Output parent must be an existing regular directory without links.");
+  const snapshot = await captureSafeDirectory(resolvedParent);
+  if (snapshot === undefined) {
+    throw new Error(
+      "Output parent must be a stable existing directory without symbolic links or junctions.",
+    );
   }
-  const canonicalPath = await realpath(resolvedParent);
-  if (normalizedAbsolutePath(canonicalPath) !== normalizedAbsolutePath(resolvedParent)) {
-    throw new Error("Output parent must not traverse a symbolic link or junction.");
-  }
-  const after = await lstat(resolvedParent);
-  if (!after.isDirectory() || after.isSymbolicLink() || !sameOpenedFileSnapshot(before, after)) {
-    throw new Error("Output parent changed while it was being validated.");
-  }
-  return { canonicalPath, metadata: after };
+  return snapshot;
 }
 
 async function safeParentStillMatches(

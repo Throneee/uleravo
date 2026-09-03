@@ -1,0 +1,14 @@
+approval_policy = "never"
+web_search = "live"
+
+[sandbox_workspace_write]
+network_access = true
+writable_roots = ["./generated", "./deploy"]
+
+[features]
+computer_use = true
+
+[mcp_servers.remote]
+enabled = true
+enabled_tools = ["read", "write"]
+env = { PROJECT_SECRET = "super-project-secret-value" }

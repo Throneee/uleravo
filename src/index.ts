@@ -56,10 +56,52 @@ export {
   formatArtifactSnapshotJson,
   formatArtifactSnapshotText,
 } from "./formatters/artifact-snapshot.js";
+export {
+  formatCodexHarnessDeltaJson,
+  formatCodexHarnessDeltaText,
+  formatCodexHarnessJson,
+  formatCodexHarnessText,
+} from "./formatters/codex-harness.js";
 export { formatComparisonJson, formatComparisonText } from "./formatters/comparison.js";
 export { formatJson } from "./formatters/json.js";
 export { formatSarif } from "./formatters/sarif.js";
 export { formatText } from "./formatters/text.js";
+export { snapshotCodexHarness } from "./harnesses/codex.js";
+export { compareCodexHarnessSnapshots } from "./harnesses/comparison.js";
+export type {
+  CodexAppInventory,
+  CodexCommandIdentity,
+  CodexDeclaredValue,
+  CodexHarnessApplicability,
+  CodexHarnessCoverage,
+  CodexHarnessDelta,
+  CodexHarnessDiagnostic,
+  CodexHarnessEvidence,
+  CodexHarnessEvidenceLayer,
+  CodexHarnessInventory,
+  CodexHarnessLayer,
+  CodexHarnessLayerKind,
+  CodexHarnessSnapshot,
+  CodexHarnessSnapshotOptions,
+  CodexHookInventory,
+  CodexInventoryValue,
+  CodexMcpIdentity,
+  CodexMcpServerInventory,
+  CodexPermissionChange,
+  CodexPermissionChangeDirection,
+  CodexPluginInventory,
+  CodexSemanticFact,
+  CodexSkillInventory,
+  CodexToolInventory,
+} from "./harnesses/domain.js";
+export {
+  CODEX_HARNESS_ADAPTER_VERSION,
+  CODEX_HARNESS_SCHEMA_VERSION,
+  MAX_HARNESS_CONFIG_BYTES,
+  MAX_HARNESS_FACTS,
+  MAX_HARNESS_REPORT_BYTES,
+} from "./harnesses/domain.js";
+export { parseCodexHarnessSnapshot, readCodexHarnessSnapshot } from "./harnesses/read.js";
 export { parseScanReport, readScanReport } from "./reports/read.js";
 export type { ScanOptions } from "./scanner/scan.js";
 export { scan } from "./scanner/scan.js";
@@ -79,6 +121,7 @@ export {
 } from "./signatures.js";
 export {
   ARTIFACT_ANALYZER_VERSION,
+  HARNESS_ANALYZER_VERSION,
   MCP_ANALYZER_VERSION,
   PACKAGE_VERSION,
   PRODUCT_NAME,

@@ -2,7 +2,7 @@
 
 ## Current shape
 
-Uleravo is one Node.js package with six explicit boundaries:
+Uleravo is one Node.js package with seven explicit boundaries:
 
 1. **Discovery** resolves the target once, walks only regular files, enforces per-file, candidate-count, and aggregate-byte limits, detects unresolved LFS source and unmaterialized declared submodules, and returns normalized relative paths plus explicit incomplete-scan diagnostics.
 2. **Rules** inspect immutable file records under per-file evidence-work and scanner-wide finding limits. JavaScript and TypeScript rules use the TypeScript AST and may build a bounded in-memory index over source files already admitted by discovery; Python handlers use a bounded lexer and logical-statement model; text and manifest rules use bounded deterministic parsing.
@@ -10,6 +10,7 @@ Uleravo is one Node.js package with six explicit boundaries:
 4. **Domain** creates redacted findings, stable fingerprints, summaries, and a versioned report envelope.
 5. **Signatures** normalize and redact reports, bind their exact bytes to an Ed25519 signature, and verify them against an explicitly supplied public key.
 6. **Adapters** render text, JSON, or SARIF, compare reports as fingerprint multisets, and implement the CLI and workspace-confined GitHub Action.
+7. **Harnesses** read bounded, explicitly supported local agent configuration as inert data, normalize declared capability and permission facts with source/applicability labels, and compare those facts without claiming unobserved runtime state.
 
 Rules do not perform I/O or load target modules. Formatters do not make security decisions. The scanner orchestrator catches each file-scoped or repository-scoped rule independently and records failures as diagnostics.
 
@@ -43,8 +44,8 @@ Signed-report envelopes contain the normalized report as canonical unpadded base
 
 The GitHub Action is a Node 24 adapter over the same library API. It converts GitHub's repository and commit environment into the scanner's explicit provenance input, confines targets and outputs to the real workspace, rejects pre-existing evidence paths inside the target, and writes JSON plus diagnostic-bearing SARIF before applying the threshold. Vite bundles the TypeScript parser into one CommonJS artifact; only Node built-ins remain external. CI regenerates that artifact byte-for-byte and executes it without `node_modules` resolution.
 
-The JSON Schemas live at [`schemas/report.schema.json`](../schemas/report.schema.json), [`schemas/comparison.schema.json`](../schemas/comparison.schema.json), and [`schemas/signed-report.schema.json`](../schemas/signed-report.schema.json). SARIF output targets 2.1.0 and carries scan provenance in its run properties.
+The JSON Schemas live at [`schemas/report.schema.json`](../schemas/report.schema.json), [`schemas/comparison.schema.json`](../schemas/comparison.schema.json), and [`schemas/signed-report.schema.json`](../schemas/signed-report.schema.json). The unreleased Codex harness uses a separately versioned TypeScript domain and a bounded delta-input reader while complete nested schema validation remains under review. SARIF output targets 2.1.0 and carries scan provenance in its run properties.
 
 ## Dependency policy
 
-The production package currently has one runtime dependency: TypeScript, used as the parser. Node built-ins provide argument parsing, hashing, filesystem access, URL parsing, and output. Build tooling stays in development dependencies and every dependency is exact-pinned in the lockfile. The Action bundle vendors production code and TypeScript, but not build tooling.
+The production package uses TypeScript for source parsing, YAML for Skill front matter, and smol-toml for inert Codex configuration parsing. Node built-ins provide argument parsing, hashing, filesystem access, URL parsing, and output. Build tooling stays in development dependencies and every dependency is exact-pinned in the lockfile. The v0.6.x Action bundle vendors the stable scanner and TypeScript, but not the unreleased artifact or harness adapters.

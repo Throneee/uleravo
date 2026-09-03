@@ -10,14 +10,15 @@ Uleravo is the public-beta name after a preliminary exact, near-name, namespace,
 
 - **Ready for public beta:** the reviewed v0.6.3 CLI package and bundled GitHub Action source have passed their local release gates.
 - **Launch operation pending in this snapshot:** create and push the public GitHub remote, then promote the production-site release. If you are reading this on the public GitHub repository, the remote step is complete.
-- **Next:** Agent Skills, Agent Plugins, one evidence-selected harness snapshot, semantic capability delta, and advisory trust decisions.
+- **Unreleased v0.7 foundation:** Agent Skill and Plugin identity snapshots plus one Codex local-configuration harness and semantic permission delta.
+- **Next:** correlate artifact identity with harness exposure, then add advisory trust decisions without claiming runtime enforcement.
 - **Not current capabilities:** hosted monitoring, organization policy, a trusted enforcement boundary, a dashboard, or runtime protection.
 
 The release core is licensed Apache-2.0 and ships from the exact disclosure-safe export described by `release/public-export.json`. The GitHub Action uses immutable commit pins, and the default `pnpm check` gate includes the separate publication check. External availability begins when this exact history is pushed to the public remote. Do not interpret the future product direction as a claim that those capabilities already exist.
 
 ### Unreleased v0.7 developer branch
 
-The `codex/v0.7-plugin-artifacts` branch contains additive, local-only Agent Skill and OpenAI Plugin snapshot prototypes. They record bounded raw-byte artifact closures and declared identity metadata without executing Skill code, Plugin hooks, or MCP servers. The Plugin lane also resolves supported component and asset paths only against entries observed during the same bounded capture. Capability normalization remains unsupported and harness permissions remain unavailable. This is development evidence, not part of the reviewed v0.6.3 public package or a trust decision. See [the v0.7 snapshot contract](docs/v0.7-artifact-snapshots.md).
+The `codex/v0.7-plugin-artifacts` branch contains additive, local-only Agent Skill and OpenAI Plugin identity snapshots plus the first Codex local-configuration harness. The artifact adapters record bounded raw-byte closures and declared identity without executing Skill code, Plugin hooks, or MCP servers. The Codex harness parses user `config.toml`, trusted project `.codex/config.toml`, and optional system `requirements.toml` strictly as data; it inventories declared Skills, Plugins, Apps, MCP servers, tools, hooks, filesystem/network scope, and approval posture, then produces a directional semantic permission delta. It never starts Codex or a configured capability and explicitly withholds complete effective-runtime claims when defaults, profiles, session flags, cloud requirements, or runtime discovery are unavailable. This is unreleased development evidence under the retained `0.6.3` package version, not part of the reviewed v0.6.3 package or a trust decision. See [the artifact snapshot contract](docs/v0.7-artifact-snapshots.md) and [the Codex harness contract](docs/v0.7-codex-harness.md).
 
 ## What it does
 

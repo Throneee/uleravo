@@ -967,8 +967,7 @@ async function makeFixture(): Promise<{
   userConfig: string;
   workspace: string;
 }> {
-  const workspace = await mkdtemp(path.join(tmpdir(), "uleravo-capability-graph-"));
-  temporaryDirectories.push(workspace);
+  const workspace = await makeTemporaryDirectory();
   const project = path.join(workspace, "project");
   const skill = path.join(workspace, "skill");
   const userConfig = path.join(workspace, "config.toml");
@@ -984,7 +983,8 @@ async function makeFixture(): Promise<{
 async function makeTemporaryDirectory(): Promise<string> {
   const directory = await mkdtemp(path.join(tmpdir(), "uleravo-capability-graph-"));
   temporaryDirectories.push(directory);
-  return directory;
+  // Keep declarations and filesystem hooks canonical when TMP uses a Windows 8.3 alias.
+  return await filesystem.realpath(directory);
 }
 
 async function writeProjectSkillDeclaration(

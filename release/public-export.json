@@ -321,7 +321,7 @@
     "test/capability-graph-cli.test.ts": "c254041183e3fcb56796d5b2d8f91d6f72849b4b818a80c45f89f0011ce45fc1",
     "test/capability-graph-comparison-cli.test.ts": "606caeda7840fd0deb727dca381deea4a39b58b8b6e62fc316dc2015aa20708d",
     "test/capability-graph-comparison.test.ts": "9fa82064d475f01b826f46cd36a8da8057c9fc95167c2f1756104facd6adef96",
-    "test/capability-graph.test.ts": "78065a19c89e2762d9ea334eae7bf3b97cbbc8d1155f235323c477db4ba64d78",
+    "test/capability-graph.test.ts": "3a7eb5a97cb14cea69eb6b1c3ae09d409ea7c47c0138812c55864bcf8dea862c",
     "test/cli.test.ts": "7b3703fd28a49f714cde8d646b1b257adefdda0529536b374b81ca5dc6dfeafc",
     "test/codex-harness-cli.test.ts": "fc0bb2e798882760494bc60bcd3037f7c5f157753a7457a674c8295aa6e31f15",
     "test/codex-harness.test.ts": "f20453ce14982ab3bef4d6c99131791188f89417c5a03baeebdbff40c2ae3c52",

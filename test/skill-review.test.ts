@@ -121,6 +121,13 @@ describe("retained Skill evidence review", () => {
       },
     });
     expect(formatSkillReviewCheckText(bytes)).toContain("Review the changed Skill files locally");
+    const text = formatSkillReviewCheckText(bytes);
+    expect(text.indexOf("Review the changed Skill files locally")).toBeLessThan(
+      text.indexOf("Receipt SHA-256:"),
+    );
+    expect(text).toContain("advisory-only");
+    expect(text).toContain("unsigned-unauthenticated");
+    expect(text).toContain("Recapture before checking");
     const context = checkSkillReview(receipt, makeGraph({ harnessContent: "c".repeat(64) }));
     expect(context.comparison.observations).toMatchObject({
       skillBytes: "same",

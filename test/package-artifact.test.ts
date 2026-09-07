@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,7 +10,9 @@ import { describe, expect, it } from "vitest";
 const execFileAsync = promisify(execFile);
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageName = "uleravo";
-const packageVersion = "0.7.0";
+const packageVersion = "0.8.0-rc.1";
+const artifactAnalyzerVersion = "0.7.0";
+const harnessAnalyzerVersion = "0.7.0";
 const archiveName = `${packageName}-${packageVersion}.tgz`;
 
 describe("packed release", () => {
@@ -48,7 +50,6 @@ describe("packed release", () => {
         [
           npmEntrypoint,
           "install",
-          "--global",
           "--prefix",
           prefix,
           "--ignore-scripts",
@@ -60,28 +61,34 @@ describe("packed release", () => {
         { npm_config_cache: path.join(temporaryRoot, "npm-cache") },
       );
 
-      const installedRoot =
-        process.platform === "win32"
-          ? path.join(prefix, "node_modules", packageName)
-          : path.join(prefix, "lib", "node_modules", packageName);
-      const installedShim =
-        process.platform === "win32"
-          ? path.join(prefix, `${packageName}.cmd`)
-          : path.join(prefix, "bin", packageName);
+      const installedRoot = path.join(prefix, "node_modules", packageName);
+      const installedShim = path.join(
+        prefix,
+        "node_modules",
+        ".bin",
+        process.platform === "win32" ? `${packageName}.cmd` : packageName,
+      );
       const installedCli = path.join(installedRoot, "dist", "cli.js");
       const installedReadme = await readFile(path.join(installedRoot, "README.md"), "utf8");
       await assertLocalReadmeLinks(installedReadme, installedRoot);
+      for (const reference of ["skill-review.md", "mcp-scanning.md"]) {
+        const docs = path.join(installedRoot, "docs");
+        await assertLocalReadmeLinks(
+          await readFile(path.join(docs, reference), "utf8"),
+          installedRoot,
+          docs,
+        );
+      }
 
       await writeFile(
         path.join(temporaryRoot, "safe-target.ts"),
         "export const normalize = (value: string): string => value.trim();\n",
       );
-      const skillRoot = path.join(temporaryRoot, "minimal-skill");
-      await mkdir(skillRoot);
-      await writeFile(
-        path.join(skillRoot, "SKILL.md"),
-        "---\nname: minimal-skill\ndescription: A packaged-command smoke fixture.\n---\n\nInspect the supplied local input.\n",
-      );
+      const workflow = path.join(temporaryRoot, "workflow");
+      await cp(path.join(installedRoot, "examples", "skill-review"), workflow, { recursive: true });
+      const skillRoot = path.join(workflow, "skill");
+      const projectRoot = path.join(workflow, "project");
+      await mkdir(projectRoot);
       await Promise.all([access(installedShim), access(installedCli)]);
       const versionResult = await runInstalledCli(
         installedShim,
@@ -126,7 +133,7 @@ describe("packed release", () => {
       };
       expect(installedSnapshot.documentType).toBe("uleravo.artifact-snapshot");
       expect(installedSnapshot.complete).toBe(true);
-      expect(installedSnapshot.snapshot.analyzer.version).toBe(packageVersion);
+      expect(installedSnapshot.snapshot.analyzer.version).toBe(artifactAnalyzerVersion);
 
       const pluginRoot = path.join(temporaryRoot, "minimal-plugin");
       await mkdir(path.join(pluginRoot, ".codex-plugin"), { recursive: true });
@@ -162,7 +169,7 @@ describe("packed release", () => {
       expect(installedPluginSnapshot).toMatchObject({
         artifact: { kind: "plugin" },
         complete: true,
-        snapshot: { analyzer: { version: packageVersion } },
+        snapshot: { analyzer: { version: artifactAnalyzerVersion } },
       });
 
       const baselineConfig = path.join(temporaryRoot, "baseline-codex.toml");
@@ -222,7 +229,7 @@ describe("packed release", () => {
       };
       expect(installedHarness).toMatchObject({
         documentType: "uleravo.harness-snapshot",
-        harness: { analyzer: { version: packageVersion } },
+        harness: { analyzer: { version: harnessAnalyzerVersion } },
       });
       expect(installedHarnessDelta.documentType).toBe("uleravo.harness-delta");
       expect(installedHarnessDelta.changes).toContainEqual(
@@ -232,19 +239,15 @@ describe("packed release", () => {
         }),
       );
 
-      const graphConfig = path.join(temporaryRoot, "graph-codex.toml");
+      const graphConfig = path.join(workflow, "config.toml");
       const capabilityGraph = path.join(temporaryRoot, "skill.capability-graph.json");
-      await writeFile(
-        graphConfig,
-        '[[skills.config]]\npath = "./minimal-skill/SKILL.md"\nenabled = true\n',
-      );
       await runInstalledCli(
         installedShim,
         installedCli,
         [
           "capability-graph",
           skillRoot,
-          temporaryRoot,
+          projectRoot,
           "--user-config",
           graphConfig,
           "--skip-requirements",
@@ -261,7 +264,7 @@ describe("packed release", () => {
         scope: { assertion: string; effectAuthority: string; runtimeReachability: string };
       };
       expect(installedCapabilityGraph).toMatchObject({
-        correlation: { state: "declared-enabled" },
+        correlation: { state: "declared-disabled" },
         documentType: "uleravo.skill-capability-graph",
         scope: {
           assertion: "declared-exposure-only",
@@ -275,6 +278,7 @@ describe("packed release", () => {
         installedCli,
         installedRoot,
         installedShim,
+        project: projectRoot,
         skill: skillRoot,
         workspace: temporaryRoot,
       });
@@ -397,6 +401,7 @@ async function assertInstalledGraphComparison(fixture: {
   installedCli: string;
   installedRoot: string;
   installedShim: string;
+  project: string;
   skill: string;
   workspace: string;
 }): Promise<void> {
@@ -406,7 +411,7 @@ async function assertInstalledGraphComparison(fixture: {
     invoke([
       "capability-graph",
       fixture.skill,
-      fixture.workspace,
+      fixture.project,
       "--user-config",
       fixture.config,
       "--skip-requirements",
@@ -462,7 +467,9 @@ async function assertInstalledGraphComparison(fixture: {
   });
 
   const manifest = path.join(fixture.skill, "SKILL.md");
-  await writeFile(manifest, `${await readFile(manifest, "utf8")}Explain the local evidence.\n`);
+  const originalSkill = await readFile(manifest, "utf8");
+  const originalConfig = await readFile(fixture.config, "utf8");
+  await writeFile(manifest, `${originalSkill}Explain the local evidence.\n`);
   const bytesChanged = path.join(fixture.workspace, "bytes-changed.graph.json");
   await capture(bytesChanged);
   const bytesResult = await compare(fixture.baseline, bytesChanged, ["--format", "json"]);
@@ -489,31 +496,28 @@ async function assertInstalledGraphComparison(fixture: {
   const bytesReceipt = path.join(fixture.workspace, "bytes.review.json");
   await invoke(["review-record", bytesChanged, "--format", "json", "--output", bytesReceipt]);
 
-  await writeFile(
-    fixture.config,
-    '[[skills.config]]\npath = "./minimal-skill/SKILL.md"\nenabled = false\n',
-  );
-  const disabled = path.join(fixture.workspace, "disabled.graph.json");
-  await capture(disabled);
-  const declarationResult = await compare(bytesChanged, disabled, ["--format", "json"]);
+  await writeFile(fixture.config, originalConfig.replace("enabled = false", "enabled = true"));
+  const enabled = path.join(fixture.workspace, "enabled.graph.json");
+  await capture(enabled);
+  const declarationResult = await compare(bytesChanged, enabled, ["--format", "json"]);
   expect(JSON.parse(String(declarationResult.stdout))).toMatchObject({
     status: "changed",
-    baseline: { state: "declared-enabled" },
-    current: { state: "declared-disabled" },
+    baseline: { state: "declared-disabled" },
+    current: { state: "declared-enabled" },
     observations: { skillBytes: "same", declarations: "different" },
   });
-  const declarationText = await compare(bytesChanged, disabled);
-  expect(String(declarationText.stdout)).toContain("declared-enabled");
+  const declarationText = await compare(bytesChanged, enabled);
   expect(String(declarationText.stdout)).toContain("declared-disabled");
-  await expect(invoke(["review-check", bytesReceipt, disabled])).rejects.toMatchObject({
+  expect(String(declarationText.stdout)).toContain("declared-enabled");
+  await expect(invoke(["review-check", bytesReceipt, enabled])).rejects.toMatchObject({
     code: 1,
-    stdout: expect.stringContaining("declared-enabled -> declared-disabled"),
+    stdout: expect.stringContaining("declared-disabled -> declared-enabled"),
   });
-  for (const output of [fixture.baseline, receipt, disabled]) {
-    await expect(invoke(["review-record", disabled, "--output", output])).rejects.toMatchObject({
+  for (const output of [fixture.baseline, receipt, enabled]) {
+    await expect(invoke(["review-record", enabled, "--output", output])).rejects.toMatchObject({
       code: 2,
     });
-    await expect(checkReview(disabled, ["--output", output])).rejects.toMatchObject({ code: 2 });
+    await expect(checkReview(enabled, ["--output", output])).rejects.toMatchObject({ code: 2 });
   }
   expect(await readFile(receipt, "utf8")).toBe(receiptBytes);
   const invalidReceipt = path.join(fixture.workspace, "invalid.review.json");
@@ -521,16 +525,16 @@ async function assertInstalledGraphComparison(fixture: {
     invalidReceipt,
     receiptBytes.replace('"scope": "advisory-only"', '"scope": "enforced"'),
   );
-  await expect(invoke(["review-check", invalidReceipt, disabled])).rejects.toMatchObject({
+  await expect(invoke(["review-check", invalidReceipt, enabled])).rejects.toMatchObject({
     code: 2,
     stdout: "",
   });
 
   const comparisonPath = path.join(fixture.workspace, "graph-comparison.json");
-  await compare(bytesChanged, disabled, ["--format", "json", "--output", comparisonPath]);
+  await compare(bytesChanged, enabled, ["--format", "json", "--output", comparisonPath]);
   expect(await readFile(comparisonPath, "utf8")).toBe(String(declarationResult.stdout));
-  for (const output of [fixture.baseline, disabled, comparisonPath]) {
-    await expect(compare(fixture.baseline, disabled, ["--output", output])).rejects.toMatchObject({
+  for (const output of [fixture.baseline, enabled, comparisonPath]) {
+    await expect(compare(fixture.baseline, enabled, ["--output", output])).rejects.toMatchObject({
       code: 2,
     });
   }
@@ -540,7 +544,7 @@ async function assertInstalledGraphComparison(fixture: {
   await writeFile(fixture.config, "[broken\n");
   const incomplete = path.join(fixture.workspace, "incomplete.graph.json");
   await expect(capture(incomplete)).rejects.toMatchObject({ code: 2 });
-  await expect(compare(disabled, incomplete, ["--format", "json"])).rejects.toMatchObject({
+  await expect(compare(enabled, incomplete, ["--format", "json"])).rejects.toMatchObject({
     code: 2,
     stdout: expect.stringContaining('"status": "incomplete"'),
   });
@@ -556,9 +560,33 @@ async function assertInstalledGraphComparison(fixture: {
     code: 2,
     stdout: "",
   });
+
+  await Promise.all([
+    writeFile(manifest, originalSkill),
+    writeFile(fixture.config, originalConfig),
+  ]);
+  const restored = path.join(fixture.workspace, "restored.graph.json");
+  await capture(restored);
+  const restoration = await compare(fixture.baseline, restored, ["--format", "json"]);
+  expect(JSON.parse(String(restoration.stdout))).toMatchObject({
+    complete: true,
+    status: "unchanged",
+  });
+  const restoredReceipt = path.join(fixture.workspace, "restored.review.json");
+  await invoke(["review-record", restored, "--format", "json", "--output", restoredReceipt]);
+  const fresh = path.join(fixture.workspace, "current.graph.json");
+  await capture(fresh);
+  const retainedCheck = await invoke(["review-check", restoredReceipt, fresh]);
+  expect(String(retainedCheck.stdout)).toContain("Review result: matches-evidence");
+  expect(await readFile(receipt, "utf8")).toBe(receiptBytes);
+  expect(await readFile(restoredReceipt, "utf8")).toBe(receiptBytes);
 }
 
-async function assertLocalReadmeLinks(readme: string, installedRoot: string): Promise<void> {
+async function assertLocalReadmeLinks(
+  readme: string,
+  installedRoot: string,
+  linkBase = installedRoot,
+): Promise<void> {
   for (const match of readme.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {
     const rawTarget = match[1]?.trim();
     if (
@@ -569,7 +597,7 @@ async function assertLocalReadmeLinks(readme: string, installedRoot: string): Pr
       continue;
     }
     const relativeTarget = decodeURIComponent(rawTarget.split(/[?#]/u, 1)[0] ?? "");
-    const target = path.resolve(installedRoot, relativeTarget);
+    const target = path.resolve(linkBase, relativeTarget);
     expect(target.startsWith(`${installedRoot}${path.sep}`)).toBe(true);
     expect((await stat(target)).isFile()).toBe(true);
   }

@@ -58,6 +58,17 @@ describe("saved Skill graph comparison", () => {
     expect(formatSkillCapabilityGraphComparisonText(result)).toContain(
       "do not establish capability expansion",
     );
+    const lines = formatSkillCapabilityGraphComparisonText(result).trimEnd().split("\n");
+    const changeLine = lines.findIndex((line) => line.includes("Skill bytes: different"));
+    const actionLine = lines.findIndex((line) =>
+      line.includes("Review the changed Skill files locally"),
+    );
+    expect(actionLine - changeLine).toBeGreaterThan(0);
+    expect(actionLine - changeLine).toBeLessThanOrEqual(8);
+    expect(lines.length).toBeLessThan(34);
+    for (const limit of result.limitations) {
+      expect(lines.join("\n")).toContain(limit);
+    }
     expect(result.current.declarations[0]).not.toHaveProperty("id");
     expect(result.current.graphId).toBe(current.graph.id);
     expect(result.baseline.skillContentSha256).toBe(baseline.inputs.skill.contentSha256);
@@ -186,6 +197,10 @@ describe("saved Skill graph comparison", () => {
     expect(result.status).toBe("incomplete");
     expect(result.limitations.join(" ")).toContain("Input analyzer versions differ");
     expect(result.current.diagnostics).toHaveLength(1);
+    const text = formatSkillCapabilityGraphComparisonText(result);
+    expect(text).toContain("Current: evidence complete: no");
+    expect(text.indexOf("ERROR HARNESS_CAPTURE_CHANGED")).toBeGreaterThan(text.indexOf("Current:"));
+    expect(text).toContain("Input analyzer versions differ");
   });
 
   it("validates library inputs, including identities, semantic consistency and supported adapter versions", () => {

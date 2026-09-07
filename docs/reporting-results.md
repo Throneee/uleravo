@@ -47,7 +47,7 @@ Copy this template into a public issue only after completing the sanitization st
 
 - Type: false positive | detection gap | rule correction | incomplete-scan problem
 - Rule ID: MCP___
-- Uleravo package version: 0.7.0
+- Uleravo package version: 0.8.0-rc.1 (local candidate; use `uleravo --version` for your installation)
 - Analyzer version shown in the affected report: 0.6.3 (MCP) or 0.7.0 (artifact/harness)
 - Document schema version shown in the affected report: 1.0.0
 - Installation: GitHub Action | local development build

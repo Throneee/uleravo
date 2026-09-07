@@ -36,15 +36,15 @@ export function formatSkillReviewCheckText(check: SkillReviewCheck): string {
   return `${[
     "Uleravo Skill evidence review check (reviewed -> supplied current)",
     `Review result: ${check.status}`,
-    `Receipt SHA-256: ${check.receiptId}`,
-    ...declarationLines(),
     check.status === "matches-evidence"
       ? "The supplied graph matches this recorded evidence review."
       : check.status === "changed-since-review"
         ? "The supplied evidence changed. Review the differences before explicitly recording a new receipt."
         : "Unable to check complete evidence. Resolve the comparison limitations and recapture.",
-    ...check.limitations,
     formatSkillCapabilityGraphComparisonText(check.comparison).trimEnd(),
+    ...declarationLines(),
+    ...check.limitations,
+    `Receipt SHA-256: ${check.receiptId}`,
   ].join("\n")}\n`;
 }
 

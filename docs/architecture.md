@@ -2,7 +2,7 @@
 
 ## Current shape
 
-Uleravo is one Node.js package with nine explicit boundaries:
+Uleravo is one Node.js package with ten explicit boundaries:
 
 1. **Discovery** resolves the target once, walks only regular files, enforces per-file, candidate-count, and aggregate-byte limits, detects unresolved LFS source and unmaterialized declared submodules, and returns normalized relative paths plus explicit incomplete-scan diagnostics.
 2. **Rules** inspect immutable file records under per-file evidence-work and scanner-wide finding limits. JavaScript and TypeScript rules use the TypeScript AST and may build a bounded in-memory index over source files already admitted by discovery; Python handlers use a bounded lexer and logical-statement model; text and manifest rules use bounded deterministic parsing.

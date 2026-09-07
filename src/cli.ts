@@ -1227,7 +1227,7 @@ function helpText(): string {
     "  -o, --output <path>              Write the comparison atomically",
     "      --fail-on <severity|none>     Exit 1 for newly added findings only",
     "",
-    "Signing options:",
+    "Signing options (MCP scan reports):",
     "      --private-key <path>         Ed25519 PKCS#8 private key (sign)",
     "      --public-key <path>          Ed25519 SPKI public key (verify)",
     "  -o, --output <path>              Write the envelope or recovered report",

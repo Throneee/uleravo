@@ -1,0 +1,1 @@
+Synthetic reference only. This example needs no account, credential, or network target.

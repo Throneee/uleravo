@@ -19,7 +19,7 @@ import {
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("release metadata", () => {
-  it("keeps the v0.7.0 release contract aligned without changing legacy MCP identities", async () => {
+  it("aligns the private candidate package while preserving existing analyzer identities", async () => {
     const packageMetadata = JSON.parse(
       await readFile(path.join(repositoryRoot, "package.json"), "utf8"),
     ) as {
@@ -41,7 +41,7 @@ describe("release metadata", () => {
     expect(PRODUCT_NAME).toBe("Uleravo");
     expect(PRODUCT_SLUG).toBe("uleravo");
     expect(PRODUCT_URL).toBe("https://github.com/Throneee/uleravo");
-    expect(VERSION).toBe("0.7.0");
+    expect(VERSION).toBe("0.8.0-rc.1");
     expect(PACKAGE_VERSION).toBe(VERSION);
     expect(ARTIFACT_ANALYZER_VERSION).toBe("0.7.0");
     expect(HARNESS_ANALYZER_VERSION).toBe("0.7.0");

@@ -232,6 +232,44 @@ describe("packed release", () => {
         }),
       );
 
+      const graphConfig = path.join(temporaryRoot, "graph-codex.toml");
+      const capabilityGraph = path.join(temporaryRoot, "skill.capability-graph.json");
+      await writeFile(
+        graphConfig,
+        '[[skills.config]]\npath = "./minimal-skill/SKILL.md"\nenabled = true\n',
+      );
+      await runInstalledCli(
+        installedShim,
+        installedCli,
+        [
+          "capability-graph",
+          skillRoot,
+          temporaryRoot,
+          "--user-config",
+          graphConfig,
+          "--skip-requirements",
+          "--format",
+          "json",
+          "--output",
+          capabilityGraph,
+        ],
+        temporaryRoot,
+      );
+      const installedCapabilityGraph = JSON.parse(await readFile(capabilityGraph, "utf8")) as {
+        correlation: { state: string };
+        documentType: string;
+        scope: { assertion: string; effectAuthority: string; runtimeReachability: string };
+      };
+      expect(installedCapabilityGraph).toMatchObject({
+        correlation: { state: "declared-enabled" },
+        documentType: "uleravo.skill-capability-graph",
+        scope: {
+          assertion: "declared-exposure-only",
+          effectAuthority: "not-established",
+          runtimeReachability: "not-observed",
+        },
+      });
+
       const sarif = path.join(temporaryRoot, "uleravo.sarif");
       const report = path.join(temporaryRoot, "uleravo.json");
       const provenanceReport = path.join(temporaryRoot, "uleravo-provenance.json");
@@ -324,6 +362,7 @@ describe("packed release", () => {
         [
           sarif,
           artifactSnapshot,
+          capabilityGraph,
           baselineHarness,
           currentHarness,
           harnessDelta,

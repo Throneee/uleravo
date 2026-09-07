@@ -78,6 +78,22 @@ interface LayerRequest {
   readonly label: string;
   readonly path?: string;
   readonly projectRoot?: string;
+  readonly unsafe?: boolean;
+}
+
+export interface FrozenCodexHarnessLayerLocation {
+  readonly mode: "detected" | "disabled" | "user-supplied";
+  readonly path?: string;
+  readonly unsafe: boolean;
+}
+
+export interface FrozenCodexHarnessResolution {
+  readonly codexVersion?: string;
+  readonly maxConfigBytes?: number;
+  readonly projectConfig: FrozenCodexHarnessLayerLocation;
+  readonly requestedProjectRoot: string;
+  readonly requirements: FrozenCodexHarnessLayerLocation;
+  readonly userConfig: FrozenCodexHarnessLayerLocation;
 }
 
 interface NormalizationContext {
@@ -102,15 +118,62 @@ export async function snapshotCodexHarness(
   requestedProject: string,
   options: CodexHarnessSnapshotOptions = {},
 ): Promise<CodexHarnessSnapshot> {
-  const maxConfigBytes = normalizeConfigLimit(options.maxConfigBytes);
-  const requestedProjectRoot = path.resolve(requestedProject);
+  const resolution = freezeCodexHarnessResolution(requestedProject, options);
+  return await snapshotCodexHarnessWithResolution(resolution);
+}
+
+/**
+ * Resolves every ambient or caller-relative harness location synchronously. The returned
+ * immutable context can be reused across captures without re-reading cwd or environment state.
+ */
+export function freezeCodexHarnessResolution(
+  requestedProject: string,
+  options: CodexHarnessSnapshotOptions = {},
+  workingDirectory = process.cwd(),
+): FrozenCodexHarnessResolution {
+  if (isUnsupportedLocalFilesystemLocation(requestedProject)) {
+    throw new Error("Codex harness target must use a supported local filesystem path.");
+  }
+  const base = path.resolve(workingDirectory);
+  const userConfig = options.userConfig;
+  const projectConfig = options.projectConfig;
+  const requirements = options.requirements;
+  const codexHome = process.env.CODEX_HOME?.trim();
+  const detectedUserConfig = path.join(
+    codexHome === undefined || codexHome.length === 0 ? path.join(homedir(), ".codex") : codexHome,
+    "config.toml",
+  );
+  const detectedRequirements =
+    process.platform === "win32"
+      ? path.join(
+          process.env.ProgramData ?? "C:\\ProgramData",
+          "OpenAI",
+          "Codex",
+          "requirements.toml",
+        )
+      : "/etc/codex/requirements.toml";
+  return Object.freeze({
+    ...(options.codexVersion === undefined ? {} : { codexVersion: options.codexVersion }),
+    ...(options.maxConfigBytes === undefined ? {} : { maxConfigBytes: options.maxConfigBytes }),
+    projectConfig: freezeProjectConfigLocation(projectConfig, base),
+    requestedProjectRoot: path.resolve(base, requestedProject),
+    requirements: freezeLayerLocation(requirements, detectedRequirements, base),
+    userConfig: freezeLayerLocation(userConfig, detectedUserConfig, base),
+  });
+}
+
+export async function snapshotCodexHarnessWithResolution(
+  resolution: FrozenCodexHarnessResolution,
+): Promise<CodexHarnessSnapshot> {
+  const maxConfigBytes = normalizeConfigLimit(resolution.maxConfigBytes);
+  const requestedProjectRoot = resolution.requestedProjectRoot;
   const projectRoot = await canonicalProjectDirectory(requestedProjectRoot);
   const requestedProjectAlias = await safeWindowsProjectAlias(requestedProjectRoot, projectRoot);
   const diagnostics: CodexHarnessDiagnostic[] = [];
 
-  const userRequest = resolveUserConfigRequest(options);
-  const projectRequest = resolveProjectConfigRequest(projectRoot, options);
-  const requirementsRequest = resolveRequirementsRequest(options);
+  const userRequest = resolveUserConfigRequest(resolution.userConfig);
+  const projectRequest = resolveProjectConfigRequest(projectRoot, resolution.projectConfig);
+  const requirementsRequest = resolveRequirementsRequest(resolution.requirements);
   const [user, project, requirements] = await Promise.all([
     loadLayer(userRequest, maxConfigBytes, diagnostics),
     loadLayer(projectRequest, maxConfigBytes, diagnostics),
@@ -176,7 +239,7 @@ export async function snapshotCodexHarness(
   }
 
   const inventory = normalizeInventory(parsedLayers, context);
-  const codexVersion = normalizeCodexVersion(options.codexVersion);
+  const codexVersion = normalizeCodexVersion(resolution.codexVersion);
   const semanticFacts = [...context.facts.values()].sort(compareFacts);
   const coverage = buildCoverage(
     user,
@@ -230,37 +293,24 @@ function enforceGeneratedReportSize(snapshot: CodexHarnessSnapshot): void {
   }
 }
 
-function resolveUserConfigRequest(options: CodexHarnessSnapshotOptions): LayerRequest {
-  if (options.userConfig === null) {
+function resolveUserConfigRequest(location: FrozenCodexHarnessLayerLocation): LayerRequest {
+  if (location.mode === "disabled") {
     return { disabled: true, explicit: false, kind: "user-config", label: "user/config.toml" };
   }
-  if (options.userConfig !== undefined) {
-    return {
-      explicit: true,
-      kind: "user-config",
-      label: "user/config.toml",
-      path: path.resolve(options.userConfig),
-    };
-  }
-  const codexHome = process.env.CODEX_HOME?.trim();
   return {
-    explicit: false,
+    explicit: location.mode === "user-supplied",
     kind: "user-config",
     label: "user/config.toml",
-    path: path.join(
-      codexHome === undefined || codexHome.length === 0
-        ? path.join(homedir(), ".codex")
-        : codexHome,
-      "config.toml",
-    ),
+    ...(location.path === undefined ? {} : { path: location.path }),
+    ...(location.unsafe ? { unsafe: true } : {}),
   };
 }
 
 function resolveProjectConfigRequest(
   projectRoot: string,
-  options: CodexHarnessSnapshotOptions,
+  location: FrozenCodexHarnessLayerLocation,
 ): LayerRequest {
-  if (options.projectConfig === null) {
+  if (location.mode === "disabled") {
     return {
       disabled: true,
       explicit: false,
@@ -270,19 +320,17 @@ function resolveProjectConfigRequest(
     };
   }
   return {
-    explicit: options.projectConfig !== undefined,
+    explicit: location.mode === "user-supplied",
     kind: "project-config",
     label: ".codex/config.toml",
-    path:
-      options.projectConfig === undefined
-        ? path.join(projectRoot, ".codex", "config.toml")
-        : path.resolve(options.projectConfig),
+    path: location.path ?? path.join(projectRoot, ".codex", "config.toml"),
     projectRoot,
+    ...(location.unsafe ? { unsafe: true } : {}),
   };
 }
 
-function resolveRequirementsRequest(options: CodexHarnessSnapshotOptions): LayerRequest {
-  if (options.requirements === null) {
+function resolveRequirementsRequest(location: FrozenCodexHarnessLayerLocation): LayerRequest {
+  if (location.mode === "disabled") {
     return {
       disabled: true,
       explicit: false,
@@ -290,29 +338,71 @@ function resolveRequirementsRequest(options: CodexHarnessSnapshotOptions): Layer
       label: "system/requirements.toml",
     };
   }
-  if (options.requirements !== undefined) {
-    return {
-      explicit: true,
-      kind: "requirements",
-      label: "system/requirements.toml",
-      path: path.resolve(options.requirements),
-    };
-  }
-  const requirementsPath =
-    process.platform === "win32"
-      ? path.join(
-          process.env.ProgramData ?? "C:\\ProgramData",
-          "OpenAI",
-          "Codex",
-          "requirements.toml",
-        )
-      : "/etc/codex/requirements.toml";
   return {
-    explicit: false,
+    explicit: location.mode === "user-supplied",
     kind: "requirements",
     label: "system/requirements.toml",
-    path: requirementsPath,
+    ...(location.path === undefined ? {} : { path: location.path }),
+    ...(location.unsafe ? { unsafe: true } : {}),
   };
+}
+
+function freezeProjectConfigLocation(
+  configured: string | null | undefined,
+  workingDirectory: string,
+): FrozenCodexHarnessLayerLocation {
+  if (configured === null) return frozenLayerLocation("disabled", false);
+  if (configured === undefined) return frozenLayerLocation("detected", false);
+  return freezeResolvedLayerLocation("user-supplied", configured, workingDirectory);
+}
+
+function freezeLayerLocation(
+  configured: string | null | undefined,
+  detected: string,
+  workingDirectory: string,
+): FrozenCodexHarnessLayerLocation {
+  if (configured === null) return frozenLayerLocation("disabled", false);
+  return freezeResolvedLayerLocation(
+    configured === undefined ? "detected" : "user-supplied",
+    configured ?? detected,
+    workingDirectory,
+  );
+}
+
+function freezeResolvedLayerLocation(
+  mode: "detected" | "user-supplied",
+  requested: string,
+  workingDirectory: string,
+): FrozenCodexHarnessLayerLocation {
+  if (isUnsupportedLocalFilesystemLocation(requested)) {
+    return frozenLayerLocation(mode, true);
+  }
+  return Object.freeze({
+    mode,
+    path: path.resolve(workingDirectory, requested),
+    unsafe: false,
+  });
+}
+
+function frozenLayerLocation(
+  mode: FrozenCodexHarnessLayerLocation["mode"],
+  unsafe: boolean,
+): FrozenCodexHarnessLayerLocation {
+  return Object.freeze({ mode, unsafe });
+}
+
+function isUnsupportedLocalFilesystemLocation(
+  requested: string,
+  platform = process.platform,
+): boolean {
+  return (
+    requested.length === 0 ||
+    requested.includes("\0") ||
+    /^[\\/]{2}/u.test(requested) ||
+    /^[A-Za-z][A-Za-z0-9+.-]*:\/\//u.test(requested) ||
+    (platform === "win32" && /^[\\/]/u.test(requested)) ||
+    (/^[A-Za-z]:/u.test(requested) && !/^[A-Za-z]:[\\/]/u.test(requested))
+  );
 }
 
 async function canonicalProjectDirectory(requested: string): Promise<string> {
@@ -347,6 +437,15 @@ async function loadLayer(
     label: request.label,
     pathSource: request.disabled ? "disabled" : request.explicit ? "user-supplied" : "detected",
   } as const;
+  if (request.unsafe === true) {
+    diagnostics.push({
+      code: "HARNESS_CONFIG_UNSAFE",
+      layer: request.kind,
+      message: `${request.label} does not use a supported local filesystem path.`,
+      type: "error",
+    });
+    return { layer: { ...base, status: "unsafe" } };
+  }
   if (request.path === undefined) {
     return { layer: { ...base, status: "absent" } };
   }

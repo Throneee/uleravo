@@ -32,6 +32,29 @@ export {
 } from "./artifacts/domain.js";
 export { parseArtifactSnapshot, readArtifactSnapshot } from "./artifacts/read.js";
 export { snapshotPlugin, snapshotSkill } from "./artifacts/snapshot.js";
+export { captureSkillCapabilityGraph } from "./capability-graph/correlate.js";
+export type {
+  CapabilityGraphDiagnostic,
+  CapabilityGraphDiagnosticCode,
+  CapabilityGraphNode,
+  SkillCapabilityGraph,
+  SkillCapabilityGraphOptions,
+  SkillCorrelationState,
+  SkillDeclarationEdge,
+  SkillDeclarationEnablement,
+  SkillDeclarationIdentity,
+} from "./capability-graph/domain.js";
+export {
+  CAPABILITY_GRAPH_DIAGNOSTIC_CODES,
+  CAPABILITY_GRAPH_SCHEMA_VERSION,
+  MAX_CAPABILITY_GRAPH_REPORT_BYTES,
+  SKILL_CORRELATION_ADAPTER_VERSION,
+  SKILL_CORRELATION_STATES,
+} from "./capability-graph/domain.js";
+export {
+  parseSkillCapabilityGraph,
+  readSkillCapabilityGraph,
+} from "./capability-graph/read.js";
 export type {
   ComparisonSummary,
   ReportComparison,
@@ -56,6 +79,10 @@ export {
   formatArtifactSnapshotJson,
   formatArtifactSnapshotText,
 } from "./formatters/artifact-snapshot.js";
+export {
+  formatSkillCapabilityGraphJson,
+  formatSkillCapabilityGraphText,
+} from "./formatters/capability-graph.js";
 export {
   formatCodexHarnessDeltaJson,
   formatCodexHarnessDeltaText,

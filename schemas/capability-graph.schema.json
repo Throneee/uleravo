@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uleravo.local/schemas/skill-capability-graph-1.0.0.json",
+  "title": "Uleravo declared Skill capability graph",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "adapter",
+    "complete",
+    "correlation",
+    "diagnostics",
+    "documentType",
+    "edges",
+    "graph",
+    "inputs",
+    "nodes",
+    "schemaVersion",
+    "scope"
+  ],
+  "properties": {
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "const": "openai-skill-codex-correlation" },
+        "version": { "const": "1.0.0" }
+      }
+    },
+    "complete": { "type": "boolean" },
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "reason", "state"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "state": {
+          "enum": ["declared-disabled", "declared-enabled", "not-declared", "unknown"]
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/diagnostic" }
+    },
+    "documentType": { "const": "uleravo.skill-capability-graph" },
+    "edges": {
+      "type": "array",
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/edge" }
+    },
+    "graph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": { "id": { "$ref": "#/$defs/id" } }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["harness", "skill"],
+      "properties": {
+        "harness": { "$ref": "#/$defs/harnessInput" },
+        "skill": { "$ref": "#/$defs/skillInput" }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [{ "$ref": "#/$defs/harnessNode" }, { "$ref": "#/$defs/skillNode" }],
+      "items": false
+    },
+    "schemaVersion": { "const": "1.0.0" },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assertion", "effectAuthority", "runtimeReachability"],
+      "properties": {
+        "assertion": { "const": "declared-exposure-only" },
+        "effectAuthority": { "const": "not-established" },
+        "runtimeReachability": { "const": "not-observed" }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-f0-9]{24}$" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9.+_-]*$"
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "type"],
+      "properties": {
+        "code": {
+          "enum": [
+            "DECLARATION_AMBIGUOUS",
+            "DECLARATION_APPLICABILITY_UNKNOWN",
+            "DECLARATION_CONTEXT_CHANGED",
+            "DECLARATION_CONTEXT_UNAVAILABLE",
+            "DECLARATION_ENABLEMENT_UNKNOWN",
+            "DECLARATION_IDENTITY_MISMATCH",
+            "DECLARATION_LAYER_DISABLED",
+            "DECLARATION_NOT_APPLIED",
+            "DECLARATION_PATH_UNSAFE",
+            "HARNESS_CAPTURE_CHANGED",
+            "HARNESS_CAPTURE_INCOMPLETE",
+            "SKILL_CAPTURE_CHANGED"
+          ]
+        },
+        "layer": { "enum": ["project-config", "user-config"] },
+        "message": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "type": { "const": "error" }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "applicability",
+        "count",
+        "enablement",
+        "from",
+        "id",
+        "identity",
+        "kind",
+        "layer",
+        "to"
+      ],
+      "properties": {
+        "applicability": { "enum": ["applied", "ignored", "unknown"] },
+        "count": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "enablement": { "enum": ["disabled", "enabled", "unspecified"] },
+        "from": { "$ref": "#/$defs/id" },
+        "id": { "$ref": "#/$defs/id" },
+        "identity": { "enum": ["exact-content", "mismatch"] },
+        "kind": { "const": "declares-skill" },
+        "layer": { "enum": ["project-config", "user-config"] },
+        "to": { "$ref": "#/$defs/id" }
+      }
+    },
+    "harnessInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter", "analyzerVersion", "inputSha256", "schemaVersion", "snapshotId"],
+      "properties": {
+        "adapter": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "const": "openai-codex-local" },
+            "version": { "const": "1.0.0" }
+          }
+        },
+        "analyzerVersion": { "$ref": "#/$defs/version" },
+        "inputSha256": { "$ref": "#/$defs/sha256" },
+        "schemaVersion": { "const": "1.0.0" },
+        "snapshotId": { "$ref": "#/$defs/id" }
+      }
+    },
+    "skillInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapter", "analyzerVersion", "contentSha256", "schemaVersion", "snapshotId"],
+      "properties": {
+        "adapter": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "const": "openai-skill" },
+            "version": { "const": "1.0.0" }
+          }
+        },
+        "analyzerVersion": { "$ref": "#/$defs/version" },
+        "contentSha256": { "$ref": "#/$defs/sha256" },
+        "schemaVersion": { "const": "1.0.0" },
+        "snapshotId": { "$ref": "#/$defs/id" }
+      }
+    },
+    "nodeBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["codex-harness", "skill"] }
+      }
+    },
+    "harnessNode": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "kind"],
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "kind": { "const": "codex-harness" }
+          }
+        }
+      ]
+    },
+    "skillNode": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "kind"],
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "kind": { "const": "skill" }
+          }
+        }
+      ]
+    }
+  }
+}

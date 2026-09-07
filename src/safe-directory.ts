@@ -16,6 +16,19 @@ interface DirectoryPathComponent {
 }
 
 /**
+ * Checks ancestors from the filesystem root before a caller inspects the leaf.
+ * This rejects stable linked prefixes; path-based checks cannot atomically prevent
+ * another process from replacing a checked ancestor before the next operation.
+ */
+export async function hasNonLinkedDirectoryAncestors(requestedPath: string): Promise<boolean> {
+  try {
+    return (await captureDirectoryPath(path.dirname(path.resolve(requestedPath)))) !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Canonicalizes a stable directory while rejecting linked path components.
  * Windows DOS 8.3 aliases are accepted only after the lexical path and its
  * canonical spelling are shown to identify the same unchanged directory.

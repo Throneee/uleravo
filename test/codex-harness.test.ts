@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
@@ -5,7 +6,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { formatCodexHarnessJson } from "../src/formatters/codex-harness.js";
-import { snapshotCodexHarness } from "../src/harnesses/codex.js";
+import {
+  freezeCodexHarnessResolution,
+  snapshotCodexHarness,
+  snapshotCodexHarnessWithResolution,
+} from "../src/harnesses/codex.js";
 import { compareCodexHarnessSnapshots } from "../src/harnesses/comparison.js";
 import { MAX_HARNESS_REPORT_BYTES } from "../src/harnesses/domain.js";
 import { parseCodexHarnessSnapshot } from "../src/harnesses/read.js";
@@ -499,6 +504,54 @@ describe("Codex local harness snapshot", () => {
       { code: "HARNESS_CONFIG_UNSAFE", layer: "user-config" },
     ]);
   });
+
+  it.runIf(process.platform === "win32")(
+    "freezes the detected ProgramData requirements path before asynchronous capture",
+    async () => {
+      const workspace = await makeTemporaryDirectory();
+      const project = path.join(workspace, "project");
+      const firstProgramData = path.join(workspace, "program-data-a");
+      const secondProgramData = path.join(workspace, "program-data-b");
+      const firstRequirements = path.join(firstProgramData, "OpenAI", "Codex", "requirements.toml");
+      const secondRequirements = path.join(
+        secondProgramData,
+        "OpenAI",
+        "Codex",
+        "requirements.toml",
+      );
+      const firstContents = "# frozen ProgramData evidence\n";
+      await Promise.all([
+        mkdir(project),
+        mkdir(path.dirname(firstRequirements), { recursive: true }),
+        mkdir(path.dirname(secondRequirements), { recursive: true }),
+      ]);
+      await Promise.all([
+        writeFile(firstRequirements, firstContents),
+        writeFile(secondRequirements, "# mutated ProgramData evidence\n"),
+      ]);
+
+      const originalProgramData = process.env.ProgramData;
+      try {
+        process.env.ProgramData = firstProgramData;
+        const resolution = freezeCodexHarnessResolution(project, {
+          projectConfig: null,
+          userConfig: null,
+        });
+        process.env.ProgramData = secondProgramData;
+
+        const snapshot = await snapshotCodexHarnessWithResolution(resolution);
+        const requirements = snapshot.layers.find((layer) => layer.kind === "requirements");
+
+        expect(requirements).toMatchObject({
+          pathSource: "detected",
+          sha256: createHash("sha256").update(firstContents).digest("hex"),
+          status: "parsed",
+        });
+      } finally {
+        restoreEnvironmentVariable("ProgramData", originalProgramData);
+      }
+    },
+  );
 });
 
 async function materializeFixture(port: number): Promise<{
@@ -547,4 +600,12 @@ async function listen(server: Server): Promise<number> {
   const address = server.address();
   if (address === null || typeof address === "string") throw new Error("Test server has no port.");
   return address.port;
+}
+
+function restoreEnvironmentVariable(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
 }

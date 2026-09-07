@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import type { ArtifactKind, ArtifactSnapshot } from "./artifacts/domain.js";
 import { snapshotPluginWithRoot, snapshotSkillWithRoot } from "./artifacts/snapshot.js";
+import { captureSkillCapabilityGraphWithRoot } from "./capability-graph/correlate.js";
 import { compareReports, type ReportComparison } from "./comparison.js";
 import {
   type Finding,
@@ -20,6 +21,10 @@ import {
   formatArtifactSnapshotJson,
   formatArtifactSnapshotText,
 } from "./formatters/artifact-snapshot.js";
+import {
+  formatSkillCapabilityGraphJson,
+  formatSkillCapabilityGraphText,
+} from "./formatters/capability-graph.js";
 import {
   formatCodexHarnessDeltaJson,
   formatCodexHarnessDeltaText,
@@ -51,6 +56,7 @@ type ScanOutputFormat = "json" | "sarif" | "text";
 type ComparisonOutputFormat = "json" | "text";
 type SnapshotOutputFormat = "json" | "text";
 type HarnessOutputFormat = "json" | "text";
+type CapabilityGraphOutputFormat = "json" | "text";
 type FailureThreshold = Severity | "none";
 const MAX_KEY_BYTES = 64_000;
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
@@ -77,6 +83,9 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     }
     if (parsed.action === "harness-delta") {
       return await runHarnessDelta(parsed);
+    }
+    if (parsed.action === "capability-graph") {
+      return await runCapabilityGraph(parsed);
     }
     if (parsed.action === "keygen") {
       return await runKeyGeneration(parsed);
@@ -156,6 +165,22 @@ interface HarnessDeltaCommand {
   readonly output?: string;
 }
 
+interface CapabilityGraphCommand {
+  readonly action: "capability-graph";
+  readonly codexVersion?: string;
+  readonly format: CapabilityGraphOutputFormat;
+  readonly maxConfigBytes: number;
+  readonly maxSkillFileBytes: number;
+  readonly maxSkillFiles: number;
+  readonly maxSkillTotalBytes: number;
+  readonly output?: string;
+  readonly project: string;
+  readonly projectConfig?: string | null;
+  readonly requirements?: string | null;
+  readonly skill: string;
+  readonly userConfig?: string | null;
+}
+
 interface KeyGenerationCommand {
   readonly action: "keygen";
   readonly privateKey: string;
@@ -177,6 +202,7 @@ interface VerifyCommand {
 }
 
 type ParsedCommand =
+  | CapabilityGraphCommand
   | CompareCommand
   | HarnessCommand
   | HarnessDeltaCommand
@@ -271,6 +297,28 @@ async function runHarnessDelta(command: HarnessDeltaCommand): Promise<number> {
   return 0;
 }
 
+async function runCapabilityGraph(command: CapabilityGraphCommand): Promise<number> {
+  const capture = await captureSkillCapabilityGraphWithRoot(command.skill, command.project, {
+    ...(command.codexVersion === undefined ? {} : { codexVersion: command.codexVersion }),
+    maxConfigBytes: command.maxConfigBytes,
+    maxSkillFileBytes: command.maxSkillFileBytes,
+    maxSkillFiles: command.maxSkillFiles,
+    maxSkillTotalBytes: command.maxSkillTotalBytes,
+    ...(command.projectConfig === undefined ? {} : { projectConfig: command.projectConfig }),
+    ...(command.requirements === undefined ? {} : { requirements: command.requirements }),
+    ...(command.userConfig === undefined ? {} : { userConfig: command.userConfig }),
+  });
+  if (command.output !== undefined) {
+    await assertOutputOutsideRoot(command.output, capture.root);
+  }
+  const rendered =
+    command.format === "json"
+      ? formatSkillCapabilityGraphJson(capture.graph)
+      : formatSkillCapabilityGraphText(capture.graph);
+  await emitSnapshotOutput(rendered, command.output, command.format);
+  return capture.graph.complete ? 0 : 2;
+}
+
 async function runKeyGeneration(command: KeyGenerationCommand): Promise<number> {
   const keyPair = generateSigningKeyPair();
   await writeKeyPair(command.privateKey, command.publicKey, keyPair);
@@ -337,6 +385,9 @@ function parseCli(argv: readonly string[]): ParsedCommand {
   }
   if (command === "harness-delta") {
     return parseHarnessDeltaCommand(argv.slice(1));
+  }
+  if (command === "capability-graph") {
+    return parseCapabilityGraphCommand(argv.slice(1));
   }
   if (command === "keygen") {
     return parseKeyGenerationCommand(argv.slice(1));
@@ -529,6 +580,88 @@ function parseHarnessCommand(
         ? {}
         : { requirements: parsed.values.requirements }),
     target: parsed.positionals[0] ?? ".",
+    ...(parsed.values["skip-user-config"] === true
+      ? { userConfig: null }
+      : parsed.values["user-config"] === undefined
+        ? {}
+        : { userConfig: parsed.values["user-config"] }),
+  };
+}
+
+function parseCapabilityGraphCommand(
+  args: readonly string[],
+): CapabilityGraphCommand | { readonly action: "help" } {
+  const parsed = parseArgs({
+    allowPositionals: true,
+    args: [...args],
+    options: {
+      "codex-version": { type: "string" },
+      format: { default: "text", short: "f", type: "string" },
+      help: { short: "h", type: "boolean" },
+      "max-config-bytes": { default: "1000000", type: "string" },
+      "max-skill-file-bytes": { default: "10000000", type: "string" },
+      "max-skill-files": { default: "1000", type: "string" },
+      "max-skill-total-bytes": { default: "50000000", type: "string" },
+      output: { short: "o", type: "string" },
+      "project-config": { type: "string" },
+      requirements: { type: "string" },
+      "skip-project-config": { type: "boolean" },
+      "skip-requirements": { type: "boolean" },
+      "skip-user-config": { type: "boolean" },
+      "user-config": { type: "string" },
+    },
+    strict: true,
+  });
+  if (parsed.values.help === true) return { action: "help" };
+  if (parsed.positionals.length < 1 || parsed.positionals.length > 2) {
+    throw new Error(
+      "The capability-graph command requires one Skill root and at most one project root.",
+    );
+  }
+  assertExclusiveHarnessPath(
+    parsed.values["project-config"],
+    parsed.values["skip-project-config"],
+    "project config",
+  );
+  assertExclusiveHarnessPath(
+    parsed.values.requirements,
+    parsed.values["skip-requirements"],
+    "requirements",
+  );
+  assertExclusiveHarnessPath(
+    parsed.values["user-config"],
+    parsed.values["skip-user-config"],
+    "user config",
+  );
+  return {
+    action: "capability-graph",
+    ...(parsed.values["codex-version"] === undefined
+      ? {}
+      : { codexVersion: parsed.values["codex-version"] }),
+    format: parseHarnessFormat(parsed.values.format),
+    maxConfigBytes: parsePositiveInteger(parsed.values["max-config-bytes"], "--max-config-bytes"),
+    maxSkillFileBytes: parsePositiveInteger(
+      parsed.values["max-skill-file-bytes"],
+      "--max-skill-file-bytes",
+    ),
+    maxSkillFiles: parsePositiveInteger(parsed.values["max-skill-files"], "--max-skill-files"),
+    maxSkillTotalBytes: parsePositiveInteger(
+      parsed.values["max-skill-total-bytes"],
+      "--max-skill-total-bytes",
+    ),
+    ...(parsed.values.output === undefined ? {} : { output: parsed.values.output }),
+    project: parsed.positionals[1] ?? ".",
+    ...(parsed.values["skip-project-config"] === true
+      ? { projectConfig: null }
+      : parsed.values["project-config"] === undefined
+        ? {}
+        : { projectConfig: parsed.values["project-config"] }),
+    ...(parsed.values["skip-requirements"] === true
+      ? { requirements: null }
+      : parsed.values.requirements === undefined
+        ? {}
+        : { requirements: parsed.values.requirements }),
+    skill: parsed.positionals[0] ?? "",
     ...(parsed.values["skip-user-config"] === true
       ? { userConfig: null }
       : parsed.values["user-config"] === undefined
@@ -856,7 +989,78 @@ function isAlreadyExistsError(error: unknown): boolean {
 }
 
 function helpText(): string {
-  return `${PRODUCT_NAME} ${VERSION}\n\nUsage:\n  ${PRODUCT_SLUG} scan [target] [options]\n  ${PRODUCT_SLUG} compare <baseline.json> <current.json> [options]\n  ${PRODUCT_SLUG} snapshot [target] --kind <skill|plugin> [options]\n  ${PRODUCT_SLUG} harness [project] [options]\n  ${PRODUCT_SLUG} harness-delta <baseline.json> <current.json> [options]\n  ${PRODUCT_SLUG} keygen --private-key <path> --public-key <path>\n  ${PRODUCT_SLUG} sign <report.json> --private-key <path> [-o <path>]\n  ${PRODUCT_SLUG} verify <signed-report.json> --public-key <path> [-o <report.json>]\n\nScan options:\n  -f, --format <text|json|sarif>  Output format (default: text)\n  -o, --output <path>             Write the report atomically\n      --fail-on <severity|none>    Exit 1 at or above a severity (default: none)\n      --exclude <path>             Exclude a relative path; repeatable\n      --max-file-bytes <bytes>     Per-file safety limit (default: 1000000)\n      --repository-url <https>     Repository source URL for provenance\n      --commit-sha <hash>          Complete Git commit for provenance\n\nSnapshot options:\n      --kind <skill|plugin>        Snapshot one local Skill or Plugin\n  -f, --format <text|json>         Output format (default: text)\n  -o, --output <path>              Write the snapshot atomically\n      --max-file-bytes <bytes>     Per-file safety limit (default: 10000000)\n      --max-files <count>          Artifact file limit (default: 1000)\n      --max-total-bytes <bytes>    Aggregate safety limit (default: 50000000)\n      --repository-url <https>     Optional, user-supplied repository URL\n      --commit-sha <hash>          Optional, user-supplied complete commit\n\nHarness options:\n  -f, --format <text|json>         Output format (default: text)\n  -o, --output <path>              Write a new snapshot or delta file\n      --user-config <path>         Supply the user config.toml\n      --project-config <path>      Supply the project .codex/config.toml\n      --requirements <path>        Supply system requirements.toml\n      --skip-<layer>               Disable detection for a config layer\n      --codex-version <version>    Bind a caller-observed Codex version\n      --max-config-bytes <bytes>   Per-config limit (default: 1000000)\n\nCompare options:\n  -f, --format <text|json>         Output format (default: text)\n  -o, --output <path>              Write the comparison atomically\n      --fail-on <severity|none>     Exit 1 for newly added findings only\n\nSigning options:\n      --private-key <path>         Ed25519 PKCS#8 private key (sign)\n      --public-key <path>          Ed25519 SPKI public key (verify)\n  -o, --output <path>              Write the envelope or recovered report\n\nGeneral options:\n  -h, --help                       Show this help\n  -v, --version                    Show the version\n\nExit codes:\n  0  Operation completed and threshold passed\n  1  Findings met the configured threshold\n  2  Usage, incomplete snapshot, scan, report, signature, or rule error\n`;
+  return [
+    `${PRODUCT_NAME} ${VERSION}`,
+    "",
+    "Usage:",
+    `  ${PRODUCT_SLUG} scan [target] [options]`,
+    `  ${PRODUCT_SLUG} compare <baseline.json> <current.json> [options]`,
+    `  ${PRODUCT_SLUG} snapshot [target] --kind <skill|plugin> [options]`,
+    `  ${PRODUCT_SLUG} harness [project] [options]`,
+    `  ${PRODUCT_SLUG} harness-delta <baseline.json> <current.json> [options]`,
+    `  ${PRODUCT_SLUG} capability-graph <skill> [project] [options]`,
+    `  ${PRODUCT_SLUG} keygen --private-key <path> --public-key <path>`,
+    `  ${PRODUCT_SLUG} sign <report.json> --private-key <path> [-o <path>]`,
+    `  ${PRODUCT_SLUG} verify <signed-report.json> --public-key <path> [-o <report.json>]`,
+    "",
+    "Scan options:",
+    "  -f, --format <text|json|sarif>  Output format (default: text)",
+    "  -o, --output <path>             Write the report atomically",
+    "      --fail-on <severity|none>    Exit 1 at or above a severity (default: none)",
+    "      --exclude <path>             Exclude a relative path; repeatable",
+    "      --max-file-bytes <bytes>     Per-file safety limit (default: 1000000)",
+    "      --repository-url <https>     Repository source URL for provenance",
+    "      --commit-sha <hash>          Complete Git commit for provenance",
+    "",
+    "Snapshot options:",
+    "      --kind <skill|plugin>        Snapshot one local Skill or Plugin",
+    "  -f, --format <text|json>         Output format (default: text)",
+    "  -o, --output <path>              Write the snapshot atomically",
+    "      --max-file-bytes <bytes>     Per-file safety limit (default: 10000000)",
+    "      --max-files <count>          Artifact file limit (default: 1000)",
+    "      --max-total-bytes <bytes>    Aggregate safety limit (default: 50000000)",
+    "      --repository-url <https>     Optional, user-supplied repository URL",
+    "      --commit-sha <hash>          Optional, user-supplied complete commit",
+    "",
+    "Harness and capability-graph options:",
+    "  -f, --format <text|json>         Output format (default: text)",
+    "  -o, --output <path>              Write a new snapshot, delta, or graph file",
+    "      --user-config <path>         Supply the user config.toml",
+    "      --project-config <path>      Supply the project .codex/config.toml",
+    "      --requirements <path>        Supply system requirements.toml",
+    "      --skip-user-config           Disable user-config detection",
+    "      --skip-project-config        Disable project-config detection",
+    "      --skip-requirements          Disable requirements detection",
+    "      --codex-version <version>    Bind a caller-observed Codex version",
+    "      --max-config-bytes <bytes>   Per-config limit (default: 1000000)",
+    "",
+    "Capability-graph-only options:",
+    "      [project]                    Project root (default: .)",
+    "      --max-skill-file-bytes <n>   Per-Skill-file limit (default: 10000000)",
+    "      --max-skill-files <count>    Skill file limit (default: 1000)",
+    "      --max-skill-total-bytes <n>  Aggregate Skill limit (default: 50000000)",
+    "",
+    "Compare options:",
+    "  -f, --format <text|json>         Output format (default: text)",
+    "  -o, --output <path>              Write the comparison atomically",
+    "      --fail-on <severity|none>     Exit 1 for newly added findings only",
+    "",
+    "Signing options:",
+    "      --private-key <path>         Ed25519 PKCS#8 private key (sign)",
+    "      --public-key <path>          Ed25519 SPKI public key (verify)",
+    "  -o, --output <path>              Write the envelope or recovered report",
+    "",
+    "General options:",
+    "  -h, --help                       Show this help",
+    "  -v, --version                    Show the version",
+    "",
+    "Exit codes:",
+    "  0  Operation completed; capability graphs reached a definitive declared-exposure state",
+    "  1  Findings met the configured threshold",
+    "  2  Usage, incomplete/unknown evidence, scan, report, signature, or rule error",
+    "     Capability-graph unknown exits 2; an unsafe/incomplete target emits no graph",
+    "",
+  ].join("\n");
 }
 
 export async function isMainEntrypoint(

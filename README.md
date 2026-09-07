@@ -1,17 +1,18 @@
 # Uleravo
 
-Uleravo is an evidence-first local security tool for agent capabilities. It scans Model Context Protocol servers for a narrow set of high-impact problems, snapshots Agent Skill and Codex Plugin identity, and inventories one bounded Codex configuration harness without executing the target.
+Uleravo is an evidence-first local security tool for agent capabilities. It scans Model Context Protocol servers for a narrow set of high-impact problems, snapshots Agent Skill and Codex Plugin identity, inventories one bounded Codex configuration harness, and correlates exact Skill bytes to declarations without executing the target.
 
-This repository contains the local scanner, its stable MCP report contract, deterministic Skill and Codex Plugin snapshots, a Codex harness snapshot and semantic permission delta, reproducible provenance, offline signed-report verification, and a bundled MCP-focused GitHub Action. These are evidence inputs for human review, not a universal trust verdict or runtime enforcement boundary.
+This repository contains the local scanner, its stable MCP report contract, deterministic Skill and Codex Plugin snapshots, a Codex harness snapshot and semantic permission delta, an exact-byte declared-exposure capability graph, reproducible provenance, offline signed-report verification, and a bundled MCP-focused GitHub Action. These are evidence inputs for human review, not a universal trust verdict or runtime enforcement boundary.
 
 Uleravo is the public-beta name after a preliminary exact, near-name, namespace, common-law, package-registry, domain, and multilingual knockout. This is launch-stage screening, not formal trademark advice; obtain Saudi and international counsel review before filing or major paid promotion.
 
 ## Product status
 
-- **v0.7.0 package:** Agent Skill and Codex Plugin identity snapshots, the v0.6.3 MCP analyzer, and one Codex local-configuration harness with semantic permission delta.
+- **Released v0.7.0 package:** Agent Skill and Codex Plugin identity snapshots, the v0.6.3 MCP analyzer, and one Codex local-configuration harness with semantic permission delta. The immutable public release does not include `capability-graph`.
+- **Local unreleased candidate:** this checkout adds exact-byte declared Skill correlation through `capability-graph`; its package version remains 0.7.0 pending release preparation.
 - **Public repository:** source and immutable releases are published at [`Throneee/uleravo`](https://github.com/Throneee/uleravo).
 - **Compatibility:** the MCP analyzer remains version 0.6.3 so identical MCP inputs retain their established scan IDs; package, artifact-analyzer, and harness-analyzer versions are 0.7.0.
-- **Next:** correlate artifact identity with harness exposure, then add advisory trust decisions without claiming runtime enforcement.
+- **Next:** compare saved capability evidence and retain advisory review decisions without claiming runtime enforcement.
 - **Not current capabilities:** hosted monitoring, organization policy, a trusted enforcement boundary, a dashboard, or runtime protection.
 
 The release core is licensed Apache-2.0 and ships from the exact disclosure-safe export described by `release/public-export.json`. The GitHub Action uses immutable commit pins, and the default `pnpm check` gate includes the separate publication check. Do not interpret the future product direction as a claim that those capabilities already exist.
@@ -19,6 +20,12 @@ The release core is licensed Apache-2.0 and ships from the exact disclosure-safe
 ### v0.7 agent-security foundation
 
 The artifact adapters record bounded raw-byte closures and declared identity without executing Skill code, Codex Plugin hooks, or MCP servers. The Codex harness parses user `config.toml`, trusted project `.codex/config.toml`, and optional system `requirements.toml` strictly as data; it inventories declared Skills, Codex Plugins, Apps, MCP servers, tools, hooks, filesystem/network scope, and approval posture, then produces a directional semantic permission delta. It never starts Codex or a configured capability and explicitly withholds complete effective-runtime claims when defaults, profiles, session flags, cloud requirements, or runtime discovery are unavailable. See [the artifact snapshot contract](docs/v0.7-artifact-snapshots.md) and [the Codex harness contract](docs/v0.7-codex-harness.md).
+
+The local unreleased Skill capability graph takes one Skill root and those same bounded harness inputs. It reports only `declared-enabled`, `declared-disabled`, `not-declared`, or `unknown` for the exact captured bytes. It does not claim the Skill is installed, discoverable, reachable at runtime, initialized successfully, authorized to cause an effect, or trustworthy. Absolute host paths, configuration values, and artifact bytes are excluded from the graph. Safe, non-linked absolute user-config declarations are supported but never emitted; project-config absolute declarations outside the canonical project are resolved only when they exactly identify the supplied Skill root or its `SKILL.md` manifest. Uleravo treats relative user-config Skill paths as relative to that config's directory and relative project-config Skill paths as relative to the canonical project root. That is a conservative correlation convention, not a claim about undocumented Codex runtime path resolution; ambiguous, escaping, linked, changed, redacted, or otherwise unresolvable declarations fail closed as `unknown`, even when they appear unrelated because an alias cannot be excluded safely. A same-name Skill at another safely resolved root is `not-declared`, not an identity match. `DECLARATION_IDENTITY_MISMATCH` is reserved for the same canonical declared root failing exact-byte recapture. One exact declaration from an ignored or unknown layer, multiple exact declarations across any layers, or omitted exact-declaration enablement is `unknown`. Runtime discovery remains unobserved and out of scope; it does not change a complete captured-config conclusion of `not-declared` into a runtime claim.
+
+Graph IDs are canonical over the exact Skill content digest, bound harness snapshot/input identity, adapter and schema versions, and normalized exact-declaration evidence. Reordering JSON object keys or addressing the same stable Skill/project root through a safe filesystem alias does not change them while the captured config bytes remain fixed. Changing declaration spelling changes the legacy harness input identity by design, so it also changes the bound graph identity.
+
+Before inspecting a configured Skill leaf, correlation checks its directory ancestors in order on Windows and POSIX. A stable symbolic-link or junction prefix is rejected before accessing its descendants. Subsequent canonical-path and snapshot comparisons detect observed changes, but Node's portable path-based checks are not atomic: concurrent ancestor replacement can still cause a metadata lookup through a changed path. This is not a filesystem sandbox.
 
 ## What it does
 
@@ -50,11 +57,22 @@ uleravo harness ./path/to/project --format json --output current.harness.json
 uleravo harness-delta baseline.harness.json current.harness.json --format text
 ```
 
+The local unreleased candidate additionally supports:
+
+```bash
+uleravo capability-graph ./path/to/skill ./path/to/project \
+  --user-config ./config.toml --format json --output skill.graph.json
+```
+
+For `capability-graph`, the project argument defaults to `.`. Harness-layer controls are `--user-config`, `--project-config`, and `--requirements`, with exact exclusion counterparts `--skip-user-config`, `--skip-project-config`, and `--skip-requirements`. Graph capture defaults are `--max-skill-file-bytes 10000000`, `--max-skill-files 1000`, and `--max-skill-total-bytes 50000000`. Exit `0` means the graph reached any definitive declared-exposure state, including `declared-disabled` or `not-declared`; `unknown`, incomplete evidence, unsafe/incomplete target capture, or invalid usage exits `2`. An unsafe or incomplete target capture produces no graph.
+
+Excluding either declaration-bearing layer with `--skip-user-config` or `--skip-project-config` makes correlation `unknown` (exit `2`), even if an exact declaration exists in the other layer: the excluded layer might contain another declaration. This differs from an absent detected optional file. `--skip-requirements` alone does not force `unknown`, because requirements supply constraints rather than Skill declarations.
+
 Use the [rule guide](docs/rules.md) to understand each detector's trigger, safe patterns, and precision boundary. Use the [result-reporting guide](docs/reporting-results.md) to submit a correction without exposing private source or scanner evidence.
 
 ### Current limits
 
-The MCP lane remains the v0.6.3 static analyzer. Artifact snapshots identify bounded local Skill or Codex Plugin bytes and declared metadata, but do not recursively analyze instructions, execute components, establish publisher identity, or prove that a deployed endpoint matches reviewed source. The Codex harness records supported local declarations, not effective runtime state. Uleravo does not correlate an artifact snapshot to harness exposure yet, observe runtime behavior, or issue a universal security certification.
+The MCP lane remains the v0.6.3 static analyzer. Artifact snapshots identify bounded local Skill or Codex Plugin bytes and declared metadata, but do not recursively analyze instructions, execute components, establish publisher identity, or prove that a deployed endpoint matches reviewed source. The Codex harness and Skill capability graph record supported local declarations, not effective runtime state. `not-declared` means no exact declaration was found in the safely captured applicable configuration; it does not rule out runtime discovery or defaults. Uleravo does not observe runtime behavior, enforce effect authority, or issue a universal security certification.
 
 JavaScript and TypeScript analysis follows only the documented one-hop import case; Python analysis is primarily intraprocedural. Medium-confidence filesystem and outbound-request findings may require review. A complete scan means the selected inputs were processed without error diagnostics under the documented analyzer coverage. It does not mean every vulnerability class was analyzed.
 

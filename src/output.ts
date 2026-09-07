@@ -12,7 +12,7 @@ export async function assertOutputOutsideRoot(
   const parent = await captureSafeOutputParent(path.dirname(resolved));
   const canonicalDestination = path.join(parent.canonicalPath, path.basename(resolved));
   if (isWithin(canonicalRoot, canonicalDestination)) {
-    throw new Error("Snapshot output must be outside the artifact root.");
+    throw new Error("Output must be outside the artifact root.");
   }
 }
 

@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uleravo.local/schemas/skill-capability-graph-comparison-1.0.0.json",
+  "title": "Uleravo saved Skill graph comparison",
+  "description": "Directional comparison of caller-selected, strictly validated graph reports. Same recorded fields do not imply complete evidence or installation continuity. Runtime reachability, safety and trust remain unestablished.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "baseline",
+    "complete",
+    "current",
+    "documentType",
+    "limitations",
+    "nextReviewActions",
+    "observations",
+    "pairing",
+    "schemaVersion",
+    "scope",
+    "status"
+  ],
+  "properties": {
+    "baseline": { "$ref": "#/$defs/evidence" },
+    "complete": { "type": "boolean" },
+    "current": { "$ref": "#/$defs/evidence" },
+    "documentType": { "const": "uleravo.skill-capability-graph-comparison" },
+    "limitations": { "$ref": "#/$defs/guidance" },
+    "nextReviewActions": { "$ref": "#/$defs/guidance" },
+    "observations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "declarations",
+        "harnessAnalyzer",
+        "harnessContext",
+        "harnessSnapshot",
+        "skillAnalyzer",
+        "skillBytes",
+        "skillSnapshot"
+      ],
+      "properties": {
+        "declarations": { "$ref": "#/$defs/change" },
+        "harnessAnalyzer": { "$ref": "#/$defs/change" },
+        "harnessContext": { "$ref": "#/$defs/change" },
+        "harnessSnapshot": { "$ref": "#/$defs/change" },
+        "skillAnalyzer": { "$ref": "#/$defs/change" },
+        "skillBytes": { "$ref": "#/$defs/change" },
+        "skillSnapshot": { "$ref": "#/$defs/change" }
+      }
+    },
+    "pairing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["installationContinuity", "selection"],
+      "properties": {
+        "installationContinuity": { "const": "not-established" },
+        "selection": { "const": "caller-selected" }
+      }
+    },
+    "schemaVersion": { "const": "1.0.0" },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assertion", "effectAuthority", "runtimeReachability"],
+      "properties": {
+        "assertion": { "const": "declared-exposure-only" },
+        "effectAuthority": { "const": "not-established" },
+        "runtimeReachability": { "const": "not-observed" }
+      }
+    },
+    "status": { "enum": ["changed", "incomplete", "unchanged", "version-limited"] }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "enum": ["changed", "unchanged"] } } },
+      "then": {
+        "properties": {
+          "complete": { "const": true },
+          "baseline": { "properties": { "complete": { "const": true } } },
+          "current": { "properties": { "complete": { "const": true } } },
+          "observations": {
+            "properties": {
+              "harnessAnalyzer": { "const": "same" },
+              "skillAnalyzer": { "const": "same" }
+            }
+          }
+        }
+      },
+      "else": { "properties": { "complete": { "const": false } } }
+    }
+  ],
+  "$defs": {
+    "change": { "enum": ["same", "different"] },
+    "id": { "type": "string", "pattern": "^[a-f0-9]{24}$" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "guidance": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 300 }
+    },
+    "declaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["applicability", "count", "enablement", "identity", "kind", "layer"],
+      "properties": {
+        "applicability": { "enum": ["applied", "ignored", "unknown"] },
+        "count": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "enablement": { "enum": ["disabled", "enabled", "unspecified"] },
+        "identity": { "enum": ["exact-content", "mismatch"] },
+        "kind": { "const": "declares-skill" },
+        "layer": { "enum": ["project-config", "user-config"] }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "type"],
+      "properties": {
+        "code": {
+          "enum": [
+            "DECLARATION_AMBIGUOUS",
+            "DECLARATION_APPLICABILITY_UNKNOWN",
+            "DECLARATION_CONTEXT_CHANGED",
+            "DECLARATION_CONTEXT_UNAVAILABLE",
+            "DECLARATION_ENABLEMENT_UNKNOWN",
+            "DECLARATION_IDENTITY_MISMATCH",
+            "DECLARATION_LAYER_DISABLED",
+            "DECLARATION_NOT_APPLIED",
+            "DECLARATION_PATH_UNSAFE",
+            "HARNESS_CAPTURE_CHANGED",
+            "HARNESS_CAPTURE_INCOMPLETE",
+            "SKILL_CAPTURE_CHANGED"
+          ]
+        },
+        "layer": { "enum": ["project-config", "user-config"] },
+        "message": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "type": { "const": "error" }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "complete",
+        "correlationId",
+        "declarations",
+        "diagnostics",
+        "graphId",
+        "harnessInputSha256",
+        "harnessSnapshotId",
+        "skillContentSha256",
+        "skillSnapshotId",
+        "state"
+      ],
+      "properties": {
+        "complete": { "type": "boolean" },
+        "correlationId": { "$ref": "#/$defs/id" },
+        "declarations": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/declaration" }
+        },
+        "diagnostics": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/diagnostic" }
+        },
+        "graphId": { "$ref": "#/$defs/id" },
+        "harnessInputSha256": { "$ref": "#/$defs/sha256" },
+        "harnessSnapshotId": { "$ref": "#/$defs/id" },
+        "skillContentSha256": { "$ref": "#/$defs/sha256" },
+        "skillSnapshotId": { "$ref": "#/$defs/id" },
+        "state": { "enum": ["declared-disabled", "declared-enabled", "not-declared", "unknown"] }
+      }
+    }
+  }
+}

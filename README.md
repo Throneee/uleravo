@@ -8,11 +8,11 @@ Uleravo is the public-beta name after a preliminary exact, near-name, namespace,
 
 ## Product status
 
-- **Released v0.7.0 package:** Agent Skill and Codex Plugin identity snapshots, the v0.6.3 MCP analyzer, and one Codex local-configuration harness with semantic permission delta. The immutable public release does not include `capability-graph`.
-- **Local unreleased candidate:** this checkout adds exact-byte declared Skill correlation through `capability-graph`; its package version remains 0.7.0 pending release preparation.
+- **Released v0.7.0 package:** Agent Skill and Codex Plugin identity snapshots, the v0.6.3 MCP analyzer, and one Codex local-configuration harness with semantic permission delta. The immutable public release does not include `capability-graph` or `capability-graph-compare`.
+- **Local unreleased candidate:** this checkout adds exact-byte declared Skill correlation through `capability-graph` and saved evidence comparison through `capability-graph-compare`; its package version remains 0.7.0 pending release preparation.
 - **Public repository:** source and immutable releases are published at [`Throneee/uleravo`](https://github.com/Throneee/uleravo).
 - **Compatibility:** the MCP analyzer remains version 0.6.3 so identical MCP inputs retain their established scan IDs; package, artifact-analyzer, and harness-analyzer versions are 0.7.0.
-- **Next:** compare saved capability evidence and retain advisory review decisions without claiming runtime enforcement.
+- **Next:** retain advisory review decisions without claiming runtime enforcement.
 - **Not current capabilities:** hosted monitoring, organization policy, a trusted enforcement boundary, a dashboard, or runtime protection.
 
 The release core is licensed Apache-2.0 and ships from the exact disclosure-safe export described by `release/public-export.json`. The GitHub Action uses immutable commit pins, and the default `pnpm check` gate includes the separate publication check. Do not interpret the future product direction as a claim that those capabilities already exist.
@@ -62,11 +62,61 @@ The local unreleased candidate additionally supports:
 ```bash
 uleravo capability-graph ./path/to/skill ./path/to/project \
   --user-config ./config.toml --format json --output skill.graph.json
+uleravo capability-graph-compare baseline.graph.json current.graph.json --format text
 ```
 
 For `capability-graph`, the project argument defaults to `.`. Harness-layer controls are `--user-config`, `--project-config`, and `--requirements`, with exact exclusion counterparts `--skip-user-config`, `--skip-project-config`, and `--skip-requirements`. Graph capture defaults are `--max-skill-file-bytes 10000000`, `--max-skill-files 1000`, and `--max-skill-total-bytes 50000000`. Exit `0` means the graph reached any definitive declared-exposure state, including `declared-disabled` or `not-declared`; `unknown`, incomplete evidence, unsafe/incomplete target capture, or invalid usage exits `2`. An unsafe or incomplete target capture produces no graph.
 
 Excluding either declaration-bearing layer with `--skip-user-config` or `--skip-project-config` makes correlation `unknown` (exit `2`), even if an exact declaration exists in the other layer: the excluded layer might contain another declaration. This differs from an absent detected optional file. `--skip-requirements` alone does not force `unknown`, because requirements supply constraints rather than Skill declarations.
+
+### Compare a reviewed baseline with changed evidence (unreleased candidate)
+
+`capability-graph-compare` accepts exactly two saved graph JSON files in **baseline → current** order. You select the pair: graphs have no stable installation identity, and matching names, hashes, or graph IDs cannot prove installation continuity. The command validates both reports before comparing their recorded evidence, including the 2 MB input bound, duplicate JSON keys, supported schemas/adapters, semantic consistency, and recomputed graph identities. This validates report structure and internal consistency, not who captured it or whether the claimed inputs are authentic.
+
+The [comparison JSON contract](schemas/capability-graph-comparison.schema.json) binds each side's graph, correlation, snapshot and content identities. It compares Skill bytes, declaration groups, harness context digest, snapshot references, and analyzer versions separately. Derived node/edge ID changes do not become declaration changes. Baseline/current declarations show explicit enablement, applicability, layer, count, and exact-content status. Diagnostics remain attached to their input side. Changed Skill bytes require local instruction review; they do not establish capability expansion. Changed harness digests bind context whose configuration/permission semantics are unexposed here; use the corresponding complete harness snapshots and `harness-delta` for that explanation. Reports omit input filenames, host paths, source, configuration values, and imported analyzer-version text.
+
+| Result | Exit | Meaning |
+|---|---:|---|
+| `unchanged` | 0 | Both inputs contain complete evidence with matching recorded fields and analyzer versions. This is not a safety or approval verdict. |
+| `changed` | 0 | Both inputs are complete and at least one recorded field differs. Read the separate observations and review actions. |
+| `incomplete` | 2 | At least one input is unknown/incomplete, even if all recorded fields match. Resolve its diagnostics and recapture. |
+| `version-limited` | 2 | Both inputs are complete but input analyzer versions differ. Recapture with the same versions before relying on comparison continuity. |
+| No comparison | 2 | Input is invalid, unsupported, unreadable, or output cannot be written safely. |
+
+`--format text` is the default; `--format json` is deterministic. `--output` writes only a new file and refuses to overwrite either input or any existing evidence. Identical recorded fields are labelled `same` even in incomplete results; only the top-level `complete` and `status` determine comparison completeness. If both capture and version limitations apply, `incomplete` takes precedence while both limitations remain visible. The existing `compare` command remains specific to MCP scan reports.
+
+Run this synthetic PowerShell recipe from this candidate checkout after `pnpm build` (an installed candidate can use `uleravo` in place of `node ./dist/cli.js`). It creates inert files in a new temporary directory, uses an explicit synthetic user config, and leaves all reports outside the Skill root:
+
+```powershell
+$demo = Join-Path ([IO.Path]::GetTempPath()) ("uleravo-graph-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path "$demo/skill", "$demo/project" | Out-Null
+$skill = "---`nname: example-review`ndescription: Synthetic local example.`n---`n`nInspect the supplied text.`n"
+$config = "[[skills.config]]`npath = './skill'`nenabled = true`n"
+[IO.File]::WriteAllText("$demo/skill/SKILL.md", $skill)
+[IO.File]::WriteAllText("$demo/config.toml", $config)
+$capture = @("capability-graph", "$demo/skill", "$demo/project", "--user-config", "$demo/config.toml", "--skip-requirements", "--format", "json")
+
+node ./dist/cli.js @capture --output "$demo/baseline.json"
+node ./dist/cli.js capability-graph-compare "$demo/baseline.json" "$demo/baseline.json"
+# Result: unchanged; exit 0. Confirm the intended pair and review the evidence.
+
+[IO.File]::WriteAllText("$demo/skill/SKILL.md", $skill + "Explain the result clearly.`n")
+node ./dist/cli.js @capture --output "$demo/bytes-changed.json"
+node ./dist/cli.js capability-graph-compare "$demo/baseline.json" "$demo/bytes-changed.json"
+# Result: changed; Skill bytes: different; Declaration groups: same; exit 0.
+
+[IO.File]::WriteAllText("$demo/config.toml", $config.Replace("true", "false"))
+node ./dist/cli.js @capture --output "$demo/disabled.json"
+node ./dist/cli.js capability-graph-compare "$demo/bytes-changed.json" "$demo/disabled.json" --format json --output "$demo/declaration-comparison.json"
+# Result JSON: changed; skillBytes: same; declarations: different; enabled -> disabled; exit 0.
+
+[IO.File]::WriteAllText("$demo/config.toml", "[broken`n")
+node ./dist/cli.js @capture --output "$demo/incomplete.json"
+node ./dist/cli.js capability-graph-compare "$demo/disabled.json" "$demo/incomplete.json"
+# Both commands exit 2. Comparison: incomplete, with current-side diagnostics.
+```
+
+This workflow retains evidence files for human review. It does not save an approval decision or enforce runtime permissions.
 
 Use the [rule guide](docs/rules.md) to understand each detector's trigger, safe patterns, and precision boundary. Use the [result-reporting guide](docs/reporting-results.md) to submit a correction without exposing private source or scanner evidence.
 

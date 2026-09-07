@@ -8,7 +8,9 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import type { ArtifactKind, ArtifactSnapshot } from "./artifacts/domain.js";
 import { snapshotPluginWithRoot, snapshotSkillWithRoot } from "./artifacts/snapshot.js";
+import { compareSkillCapabilityGraphs } from "./capability-graph/comparison.js";
 import { captureSkillCapabilityGraphWithRoot } from "./capability-graph/correlate.js";
+import { readSkillCapabilityGraph } from "./capability-graph/read.js";
 import { compareReports, type ReportComparison } from "./comparison.js";
 import {
   type Finding,
@@ -25,6 +27,10 @@ import {
   formatSkillCapabilityGraphJson,
   formatSkillCapabilityGraphText,
 } from "./formatters/capability-graph.js";
+import {
+  formatSkillCapabilityGraphComparisonJson,
+  formatSkillCapabilityGraphComparisonText,
+} from "./formatters/capability-graph-comparison.js";
 import {
   formatCodexHarnessDeltaJson,
   formatCodexHarnessDeltaText,
@@ -86,6 +92,9 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     }
     if (parsed.action === "capability-graph") {
       return await runCapabilityGraph(parsed);
+    }
+    if (parsed.action === "capability-graph-compare") {
+      return await runCapabilityGraphComparison(parsed);
     }
     if (parsed.action === "keygen") {
       return await runKeyGeneration(parsed);
@@ -165,6 +174,14 @@ interface HarnessDeltaCommand {
   readonly output?: string;
 }
 
+interface CapabilityGraphComparisonCommand {
+  readonly action: "capability-graph-compare";
+  readonly baseline: string;
+  readonly current: string;
+  readonly format: ComparisonOutputFormat;
+  readonly output?: string;
+}
+
 interface CapabilityGraphCommand {
   readonly action: "capability-graph";
   readonly codexVersion?: string;
@@ -203,6 +220,7 @@ interface VerifyCommand {
 
 type ParsedCommand =
   | CapabilityGraphCommand
+  | CapabilityGraphComparisonCommand
   | CompareCommand
   | HarnessCommand
   | HarnessDeltaCommand
@@ -319,6 +337,22 @@ async function runCapabilityGraph(command: CapabilityGraphCommand): Promise<numb
   return capture.graph.complete ? 0 : 2;
 }
 
+async function runCapabilityGraphComparison(
+  command: CapabilityGraphComparisonCommand,
+): Promise<number> {
+  const [baseline, current] = await Promise.all([
+    readSkillCapabilityGraph(command.baseline),
+    readSkillCapabilityGraph(command.current),
+  ]);
+  const comparison = compareSkillCapabilityGraphs(baseline, current);
+  const rendered =
+    command.format === "json"
+      ? formatSkillCapabilityGraphComparisonJson(comparison)
+      : formatSkillCapabilityGraphComparisonText(comparison);
+  await emitSnapshotOutput(rendered, command.output, command.format);
+  return comparison.complete ? 0 : 2;
+}
+
 async function runKeyGeneration(command: KeyGenerationCommand): Promise<number> {
   const keyPair = generateSigningKeyPair();
   await writeKeyPair(command.privateKey, command.publicKey, keyPair);
@@ -388,6 +422,9 @@ function parseCli(argv: readonly string[]): ParsedCommand {
   }
   if (command === "capability-graph") {
     return parseCapabilityGraphCommand(argv.slice(1));
+  }
+  if (command === "capability-graph-compare") {
+    return parseCapabilityGraphComparisonCommand(argv.slice(1));
   }
   if (command === "keygen") {
     return parseKeyGenerationCommand(argv.slice(1));
@@ -696,6 +733,34 @@ function parseHarnessDeltaCommand(
   };
 }
 
+function parseCapabilityGraphComparisonCommand(
+  args: readonly string[],
+): CapabilityGraphComparisonCommand | { readonly action: "help" } {
+  const parsed = parseArgs({
+    allowPositionals: true,
+    args: [...args],
+    options: {
+      format: { default: "text", short: "f", type: "string" },
+      help: { short: "h", type: "boolean" },
+      output: { short: "o", type: "string" },
+    },
+    strict: true,
+  });
+  if (parsed.values.help === true) return { action: "help" };
+  if (parsed.positionals.length !== 2) {
+    throw new Error(
+      "The capability-graph-compare command requires baseline and current JSON graphs.",
+    );
+  }
+  return {
+    action: "capability-graph-compare",
+    baseline: parsed.positionals[0] ?? "",
+    current: parsed.positionals[1] ?? "",
+    format: parseComparisonFormat(parsed.values.format),
+    ...(parsed.values.output === undefined ? {} : { output: parsed.values.output }),
+  };
+}
+
 function assertExclusiveHarnessPath(
   pathValue: string | undefined,
   skipped: boolean | undefined,
@@ -999,6 +1064,7 @@ function helpText(): string {
     `  ${PRODUCT_SLUG} harness [project] [options]`,
     `  ${PRODUCT_SLUG} harness-delta <baseline.json> <current.json> [options]`,
     `  ${PRODUCT_SLUG} capability-graph <skill> [project] [options]`,
+    `  ${PRODUCT_SLUG} capability-graph-compare <baseline.json> <current.json> [options]`,
     `  ${PRODUCT_SLUG} keygen --private-key <path> --public-key <path>`,
     `  ${PRODUCT_SLUG} sign <report.json> --private-key <path> [-o <path>]`,
     `  ${PRODUCT_SLUG} verify <signed-report.json> --public-key <path> [-o <report.json>]`,
@@ -1040,7 +1106,14 @@ function helpText(): string {
     "      --max-skill-files <count>    Skill file limit (default: 1000)",
     "      --max-skill-total-bytes <n>  Aggregate Skill limit (default: 50000000)",
     "",
-    "Compare options:",
+    "Capability-graph-compare options (caller-selected baseline -> current):",
+    "  -f, --format <text|json>         Output format (default: text)",
+    "  -o, --output <path>              Write a new comparison file; never overwrite",
+    "      Graphs do not establish installation continuity, safety, or runtime authority.",
+    "      Complete changed/unchanged comparisons exit 0; incomplete/version-limited exit 2.",
+    "      Invalid/unsupported graphs exit 2 without a comparison.",
+    "",
+    "Compare options (MCP scan reports):",
     "  -f, --format <text|json>         Output format (default: text)",
     "  -o, --output <path>              Write the comparison atomically",
     "      --fail-on <severity|none>     Exit 1 for newly added findings only",

@@ -269,6 +269,15 @@ describe("packed release", () => {
           runtimeReachability: "not-observed",
         },
       });
+      await assertInstalledGraphComparison({
+        baseline: capabilityGraph,
+        config: graphConfig,
+        installedCli,
+        installedRoot,
+        installedShim,
+        skill: skillRoot,
+        workspace: temporaryRoot,
+      });
 
       const sarif = path.join(temporaryRoot, "uleravo.sarif");
       const report = path.join(temporaryRoot, "uleravo.json");
@@ -381,6 +390,105 @@ describe("packed release", () => {
     }
   }, 120_000);
 });
+
+async function assertInstalledGraphComparison(fixture: {
+  baseline: string;
+  config: string;
+  installedCli: string;
+  installedRoot: string;
+  installedShim: string;
+  skill: string;
+  workspace: string;
+}): Promise<void> {
+  const invoke = (args: readonly string[]) =>
+    runInstalledCli(fixture.installedShim, fixture.installedCli, args, fixture.workspace);
+  const capture = (output: string) =>
+    invoke([
+      "capability-graph",
+      fixture.skill,
+      fixture.workspace,
+      "--user-config",
+      fixture.config,
+      "--skip-requirements",
+      "--format",
+      "json",
+      "--output",
+      output,
+    ]);
+  const compare = (baseline: string, current: string, options: string[] = []) =>
+    invoke(["capability-graph-compare", baseline, current, ...options]);
+  await access(
+    path.join(fixture.installedRoot, "schemas", "capability-graph-comparison.schema.json"),
+  );
+  const originalBaseline = await readFile(fixture.baseline, "utf8");
+  const unchangedText = await compare(fixture.baseline, fixture.baseline);
+  expect(String(unchangedText.stdout)).toContain("Result: unchanged");
+  expect(String(unchangedText.stdout)).toContain("installation continuity is not established");
+  const unchanged = await compare(fixture.baseline, fixture.baseline, ["--format", "json"]);
+  expect(JSON.parse(String(unchanged.stdout))).toMatchObject({
+    complete: true,
+    documentType: "uleravo.skill-capability-graph-comparison",
+    status: "unchanged",
+  });
+
+  const manifest = path.join(fixture.skill, "SKILL.md");
+  await writeFile(manifest, `${await readFile(manifest, "utf8")}Explain the local evidence.\n`);
+  const bytesChanged = path.join(fixture.workspace, "bytes-changed.graph.json");
+  await capture(bytesChanged);
+  const bytesResult = await compare(fixture.baseline, bytesChanged, ["--format", "json"]);
+  expect(JSON.parse(String(bytesResult.stdout))).toMatchObject({
+    status: "changed",
+    observations: { skillBytes: "different", declarations: "same", harnessContext: "same" },
+  });
+  expect(String(bytesResult.stdout)).not.toContain(fixture.workspace);
+  expect(String(bytesResult.stdout)).not.toContain("Explain the local evidence");
+  expect(String((await compare(fixture.baseline, bytesChanged, ["--format", "json"])).stdout)).toBe(
+    String(bytesResult.stdout),
+  );
+  const bytesText = await compare(fixture.baseline, bytesChanged);
+  expect(String(bytesText.stdout)).toContain("Skill bytes: different");
+  expect(String(bytesText.stdout)).toContain("Declaration groups: same");
+
+  await writeFile(
+    fixture.config,
+    '[[skills.config]]\npath = "./minimal-skill/SKILL.md"\nenabled = false\n',
+  );
+  const disabled = path.join(fixture.workspace, "disabled.graph.json");
+  await capture(disabled);
+  const declarationResult = await compare(bytesChanged, disabled, ["--format", "json"]);
+  expect(JSON.parse(String(declarationResult.stdout))).toMatchObject({
+    status: "changed",
+    baseline: { state: "declared-enabled" },
+    current: { state: "declared-disabled" },
+    observations: { skillBytes: "same", declarations: "different" },
+  });
+  const declarationText = await compare(bytesChanged, disabled);
+  expect(String(declarationText.stdout)).toContain("declared-enabled");
+  expect(String(declarationText.stdout)).toContain("declared-disabled");
+
+  const comparisonPath = path.join(fixture.workspace, "graph-comparison.json");
+  await compare(bytesChanged, disabled, ["--format", "json", "--output", comparisonPath]);
+  expect(await readFile(comparisonPath, "utf8")).toBe(String(declarationResult.stdout));
+  for (const output of [fixture.baseline, disabled, comparisonPath]) {
+    await expect(compare(fixture.baseline, disabled, ["--output", output])).rejects.toMatchObject({
+      code: 2,
+    });
+  }
+  expect(await readFile(fixture.baseline, "utf8")).toBe(originalBaseline);
+  expect(await readFile(comparisonPath, "utf8")).toBe(String(declarationResult.stdout));
+
+  await writeFile(fixture.config, "[broken\n");
+  const incomplete = path.join(fixture.workspace, "incomplete.graph.json");
+  await expect(capture(incomplete)).rejects.toMatchObject({ code: 2 });
+  await expect(compare(disabled, incomplete, ["--format", "json"])).rejects.toMatchObject({
+    code: 2,
+    stdout: expect.stringContaining('"status": "incomplete"'),
+  });
+  await expect(compare(incomplete, incomplete)).rejects.toMatchObject({
+    code: 2,
+    stdout: expect.stringContaining("Result: incomplete"),
+  });
+}
 
 async function assertLocalReadmeLinks(readme: string, installedRoot: string): Promise<void> {
   for (const match of readme.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {

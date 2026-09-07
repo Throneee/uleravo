@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://uleravo.local/schemas/skill-review-receipt-1.0.0.json",
+  "title": "Uleravo retained Skill evidence review",
+  "description": "One complete graph with a fixed advisory caller declaration. Unsigned and unauthenticated: neither human review nor execution authority is established. The receipt reader also rejects duplicate keys, applies byte bounds, validates graph semantics and identities, and recomputes the full SHA-256 receipt identity over its normalized contents. No earlier state or restoration history is retained.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "authentication",
+    "declaration",
+    "disposition",
+    "documentType",
+    "graph",
+    "receipt",
+    "schemaVersion",
+    "scope"
+  ],
+  "properties": {
+    "authentication": { "const": "unsigned-unauthenticated" },
+    "declaration": { "const": "caller-declared" },
+    "disposition": { "const": "reviewed-captured-evidence" },
+    "documentType": { "const": "uleravo.skill-review-receipt" },
+    "graph": {
+      "allOf": [
+        { "$ref": "https://uleravo.local/schemas/skill-capability-graph-1.0.0.json" },
+        {
+          "properties": {
+            "complete": { "const": true },
+            "correlation": {
+              "properties": {
+                "state": { "enum": ["declared-disabled", "declared-enabled", "not-declared"] }
+              }
+            },
+            "diagnostics": { "maxItems": 0 },
+            "inputs": {
+              "properties": {
+                "harness": { "properties": { "analyzerVersion": { "const": "0.7.0" } } },
+                "skill": { "properties": { "analyzerVersion": { "const": "0.7.0" } } }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": { "id": { "type": "string", "pattern": "^[a-f0-9]{64}$" } }
+    },
+    "schemaVersion": { "const": "1.0.0" },
+    "scope": { "const": "advisory-only" }
+  }
+}

@@ -11,6 +11,8 @@ import { snapshotPluginWithRoot, snapshotSkillWithRoot } from "./artifacts/snaps
 import { compareSkillCapabilityGraphs } from "./capability-graph/comparison.js";
 import { captureSkillCapabilityGraphWithRoot } from "./capability-graph/correlate.js";
 import { readSkillCapabilityGraph } from "./capability-graph/read.js";
+import { readSkillReviewReceipt } from "./capability-graph/read-review.js";
+import { checkSkillReview, recordSkillReview } from "./capability-graph/review.js";
 import { compareReports, type ReportComparison } from "./comparison.js";
 import {
   type Finding,
@@ -40,6 +42,12 @@ import {
 import { formatComparisonJson, formatComparisonText } from "./formatters/comparison.js";
 import { formatJson } from "./formatters/json.js";
 import { formatSarif } from "./formatters/sarif.js";
+import {
+  formatSkillReviewCheckJson,
+  formatSkillReviewCheckText,
+  formatSkillReviewReceiptJson,
+  formatSkillReviewReceiptText,
+} from "./formatters/skill-review.js";
 import { formatText } from "./formatters/text.js";
 import { snapshotCodexHarness } from "./harnesses/codex.js";
 import { compareCodexHarnessSnapshots } from "./harnesses/comparison.js";
@@ -95,6 +103,12 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     }
     if (parsed.action === "capability-graph-compare") {
       return await runCapabilityGraphComparison(parsed);
+    }
+    if (parsed.action === "review-record") {
+      return await runReviewRecord(parsed);
+    }
+    if (parsed.action === "review-check") {
+      return await runReviewCheck(parsed);
     }
     if (parsed.action === "keygen") {
       return await runKeyGeneration(parsed);
@@ -198,6 +212,21 @@ interface CapabilityGraphCommand {
   readonly userConfig?: string | null;
 }
 
+interface ReviewRecordCommand {
+  readonly action: "review-record";
+  readonly graph: string;
+  readonly format: ComparisonOutputFormat;
+  readonly output?: string;
+}
+
+interface ReviewCheckCommand {
+  readonly action: "review-check";
+  readonly receipt: string;
+  readonly current: string;
+  readonly format: ComparisonOutputFormat;
+  readonly output?: string;
+}
+
 interface KeyGenerationCommand {
   readonly action: "keygen";
   readonly privateKey: string;
@@ -225,6 +254,8 @@ type ParsedCommand =
   | HarnessCommand
   | HarnessDeltaCommand
   | KeyGenerationCommand
+  | ReviewRecordCommand
+  | ReviewCheckCommand
   | ScanCommand
   | SignCommand
   | SnapshotCommand
@@ -353,6 +384,30 @@ async function runCapabilityGraphComparison(
   return comparison.complete ? 0 : 2;
 }
 
+async function runReviewRecord(command: ReviewRecordCommand): Promise<number> {
+  const receipt = recordSkillReview(await readSkillCapabilityGraph(command.graph));
+  const rendered =
+    command.format === "json"
+      ? formatSkillReviewReceiptJson(receipt)
+      : formatSkillReviewReceiptText(receipt);
+  await emitSnapshotOutput(rendered, command.output, command.format);
+  return 0;
+}
+
+async function runReviewCheck(command: ReviewCheckCommand): Promise<number> {
+  const [receipt, current] = await Promise.all([
+    readSkillReviewReceipt(command.receipt),
+    readSkillCapabilityGraph(command.current),
+  ]);
+  const check = checkSkillReview(receipt, current);
+  const rendered =
+    command.format === "json"
+      ? formatSkillReviewCheckJson(check)
+      : formatSkillReviewCheckText(check);
+  await emitSnapshotOutput(rendered, command.output, command.format);
+  return check.status === "matches-evidence" ? 0 : check.status === "changed-since-review" ? 1 : 2;
+}
+
 async function runKeyGeneration(command: KeyGenerationCommand): Promise<number> {
   const keyPair = generateSigningKeyPair();
   await writeKeyPair(command.privateKey, command.publicKey, keyPair);
@@ -435,7 +490,13 @@ function parseCli(argv: readonly string[]): ParsedCommand {
   if (command === "verify") {
     return parseVerifyCommand(argv.slice(1));
   }
-  throw new Error(`Unknown command ${command}. Run ${PRODUCT_SLUG} --help.`);
+  switch (command) {
+    case "review-record":
+    case "review-check":
+      return parseReviewCommand(command, argv.slice(1));
+    default:
+      throw new Error(`Unknown command ${command}. Run ${PRODUCT_SLUG} --help.`);
+  }
 }
 
 function parseScanCommand(args: readonly string[]): ScanCommand | { readonly action: "help" } {
@@ -761,6 +822,42 @@ function parseCapabilityGraphComparisonCommand(
   };
 }
 
+function parseReviewCommand(
+  action: "review-record" | "review-check",
+  args: readonly string[],
+): ReviewRecordCommand | ReviewCheckCommand | { readonly action: "help" } {
+  const parsed = parseArgs({
+    allowPositionals: true,
+    args: [...args],
+    options: {
+      format: { default: "text", short: "f", type: "string" },
+      help: { short: "h", type: "boolean" },
+      output: { short: "o", type: "string" },
+    },
+    strict: true,
+  });
+  if (parsed.values.help === true) return { action: "help" };
+  if (parsed.positionals.length !== (action === "review-record" ? 1 : 2)) {
+    throw new Error(
+      action === "review-record"
+        ? "The review-record command requires one complete reviewed graph JSON file."
+        : "The review-check command requires a receipt and a freshly captured graph JSON file.",
+    );
+  }
+  const output = {
+    format: parseComparisonFormat(parsed.values.format),
+    ...(parsed.values.output === undefined ? {} : { output: parsed.values.output }),
+  };
+  return action === "review-record"
+    ? { action, graph: parsed.positionals[0] ?? "", ...output }
+    : {
+        action,
+        receipt: parsed.positionals[0] ?? "",
+        current: parsed.positionals[1] ?? "",
+        ...output,
+      };
+}
+
 function assertExclusiveHarnessPath(
   pathValue: string | undefined,
   skipped: boolean | undefined,
@@ -1065,6 +1162,8 @@ function helpText(): string {
     `  ${PRODUCT_SLUG} harness-delta <baseline.json> <current.json> [options]`,
     `  ${PRODUCT_SLUG} capability-graph <skill> [project] [options]`,
     `  ${PRODUCT_SLUG} capability-graph-compare <baseline.json> <current.json> [options]`,
+    `  ${PRODUCT_SLUG} review-record <graph.json> [options]`,
+    `  ${PRODUCT_SLUG} review-check <receipt.json> <current.json> [options]`,
     `  ${PRODUCT_SLUG} keygen --private-key <path> --public-key <path>`,
     `  ${PRODUCT_SLUG} sign <report.json> --private-key <path> [-o <path>]`,
     `  ${PRODUCT_SLUG} verify <signed-report.json> --public-key <path> [-o <report.json>]`,
@@ -1113,6 +1212,16 @@ function helpText(): string {
     "      Complete changed/unchanged comparisons exit 0; incomplete/version-limited exit 2.",
     "      Invalid/unsupported graphs exit 2 without a comparison.",
     "",
+    "Review-record / review-check options (advisory captured-evidence review):",
+    "  -f, --format <text|json>         Output format (default: text; retain receipts as JSON)",
+    "  -o, --output <path>              Write a new receipt or check file; never overwrite",
+    "      Record: fixed reviewed-captured-evidence disposition; caller-declared and unsigned.",
+    "      Only complete graphs from supported analyzers can be recorded; no safety rating.",
+    "      Record exits 0 on success, 2 on invalid/ineligible evidence or output failure.",
+    "      Check exits 0 matches-evidence, 1 changed-since-review, 2 cannot-check/error.",
+    "      Recapture before checking; supplied old graphs do not prove current state.",
+    "      Neither command proves human review or authorizes execution. Check never promotes evidence.",
+    "",
     "Compare options (MCP scan reports):",
     "  -f, --format <text|json>         Output format (default: text)",
     "  -o, --output <path>              Write the comparison atomically",
@@ -1129,7 +1238,7 @@ function helpText(): string {
     "",
     "Exit codes:",
     "  0  Operation completed; capability graphs reached a definitive declared-exposure state",
-    "  1  Findings met the configured threshold",
+    "  1  Findings met the configured threshold; review-check found changed evidence",
     "  2  Usage, incomplete/unknown evidence, scan, report, signature, or rule error",
     "     Capability-graph unknown exits 2; an unsafe/incomplete target emits no graph",
     "",

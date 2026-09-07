@@ -9,7 +9,7 @@ Uleravo is the public-beta name after a preliminary exact, near-name, namespace,
 ## Product status
 
 - **Released v0.7.0 package:** Agent Skill and Codex Plugin identity snapshots, the v0.6.3 MCP analyzer, and one Codex local-configuration harness with semantic permission delta. The immutable public release does not include `capability-graph` or `capability-graph-compare`.
-- **Local unreleased candidate:** this checkout adds exact-byte declared Skill correlation through `capability-graph` and saved evidence comparison through `capability-graph-compare`; its package version remains 0.7.0 pending release preparation.
+- **Local unreleased candidate:** this checkout adds exact-byte declared Skill correlation through `capability-graph`, saved evidence comparison through `capability-graph-compare`, and advisory retained reviews through `review-record` / `review-check`; its package version remains 0.7.0 pending release preparation. These commands are absent from the immutable public v0.7.0 package.
 - **Public repository:** source and immutable releases are published at [`Throneee/uleravo`](https://github.com/Throneee/uleravo).
 - **Compatibility:** the MCP analyzer remains version 0.6.3 so identical MCP inputs retain their established scan IDs; package, artifact-analyzer, and harness-analyzer versions are 0.7.0.
 - **Next:** retain advisory review decisions without claiming runtime enforcement.
@@ -85,38 +85,67 @@ The [comparison JSON contract](schemas/capability-graph-comparison.schema.json) 
 
 `--format text` is the default; `--format json` is deterministic. `--output` writes only a new file and refuses to overwrite either input or any existing evidence. Identical recorded fields are labelled `same` even in incomplete results; only the top-level `complete` and `status` determine comparison completeness. If both capture and version limitations apply, `incomplete` takes precedence while both limitations remain visible. The existing `compare` command remains specific to MCP scan reports.
 
-Run this synthetic PowerShell recipe from this candidate checkout after `pnpm build` (an installed candidate can use `uleravo` in place of `node ./dist/cli.js`). It creates inert files in a new temporary directory, uses an explicit synthetic user config, and leaves all reports outside the Skill root:
+### Retain reviewed evidence and check for change (unreleased candidate)
+
+After reviewing a complete graph, explicitly run `review-record graph.json --format json --output reviewed.json`. The [receipt contract](schemas/skill-review-receipt.schema.json) embeds exactly one normalized graph and the fixed disposition `reviewed-captured-evidence`. It is **caller-declared, advisory-only, unsigned and unauthenticated**. Recording does not prove a human reviewed the Skill, establish safety, or authorize execution. Complete `declared-enabled`, `declared-disabled`, and `not-declared` graphs are equally eligible; unknown/incomplete graphs cannot be recorded. Receipt schema 1.0.0 supports artifact/harness analyzer version 0.7.0 in its embedded graph. Other imported analyzer versions remain readable as graphs, but cannot be retained in this receipt format.
+
+`review-check reviewed.json current.graph.json` compares that retained graph with a supplied current graph using `capability-graph-compare` internally. It recomputes the comparison from validated graphs; imported comparison JSON is never accepted as evidence. Text includes directional declarations, byte/context changes, diagnostics, and review actions. JSON returns those same observations in `comparison`, alongside the receipt's full identity and a review `status`:
+
+| Review check result | Exit | Meaning |
+|---|---:|---|
+| `matches-evidence` | 0 | The complete supplied graph matches the recorded evidence review. |
+| `changed-since-review` | 1 | Complete comparable evidence changed; inspect the differences and review before explicitly recording a new receipt. |
+| `cannot-check` | 2 | Current evidence is unknown/incomplete or analyzer versions differ. Resolve the comparison limitations and recapture. |
+| No check | 2 | The receipt or graph is invalid, unsupported, unreadable, or the output cannot be written safely. |
+
+`review-record` exits 0 on success and 2 for invalid/ineligible evidence or output failure. Both commands default to text; **use `--format json` when saving a receipt for later checking**. Their `--output` creates a new file and refuses to overwrite inputs or existing outputs. The reader limits receipts to 2,004,000 bytes, rejects duplicate JSON keys and unexpected fields, validates the embedded graph with the existing graph reader, and recomputes the receipt's full SHA-256. It hashes a domain-separated, fixed-order normalized payload containing all graph evidence, the fixed decision and scope, and version metadata. Reordering JSON object keys yields identical receipt bytes and identity. No source bytes, host paths, arbitrary notes, reviewer identity, timestamps, signatures, or history are retained. Internal consistency does not establish capture authenticity; this digest is not a signature.
+
+**Recapture before checking.** Supplying an old saved graph can only match old evidence, not prove current filesystem or runtime state. Time alone does not establish freshness. You select the intended pair using your own installation records; Uleravo infers no installation lineage. A check never updates a receipt, promotes new evidence, or edits configuration. A receipt also makes no restoration-proof claim: compare the original baseline to the restored capture separately before recording the reviewed result.
+
+Run this PowerShell recipe from the candidate checkout with Node 22.13+ and pnpm available. It packs this exact checkout, installs it into a fresh temporary consumer, and exercises the installed command. The two-file Skill is inert, the supplied configuration is synthetic, and every report is outside the Skill root:
 
 ```powershell
 $demo = Join-Path ([IO.Path]::GetTempPath()) ("uleravo-graph-" + [guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Path "$demo/skill", "$demo/project" | Out-Null
+New-Item -ItemType Directory -Path "$demo/skill/assets", "$demo/project", "$demo/consumer" | Out-Null
+pnpm pack --pack-destination "$demo"
+npm install --prefix "$demo/consumer" --ignore-scripts --no-audit --no-fund "$demo/uleravo-0.7.0.tgz"
+$uleravo = "$demo/consumer/node_modules/.bin/uleravo.cmd"
 $skill = "---`nname: example-review`ndescription: Synthetic local example.`n---`n`nInspect the supplied text.`n"
-$config = "[[skills.config]]`npath = './skill'`nenabled = true`n"
+$config = "[[skills.config]]`npath = './skill/SKILL.md'`nenabled = false`n"
 [IO.File]::WriteAllText("$demo/skill/SKILL.md", $skill)
+[IO.File]::WriteAllText("$demo/skill/assets/reference.txt", "Synthetic reference only.`n")
 [IO.File]::WriteAllText("$demo/config.toml", $config)
 $capture = @("capability-graph", "$demo/skill", "$demo/project", "--user-config", "$demo/config.toml", "--skip-requirements", "--format", "json")
 
-node ./dist/cli.js @capture --output "$demo/baseline.json"
-node ./dist/cli.js capability-graph-compare "$demo/baseline.json" "$demo/baseline.json"
-# Result: unchanged; exit 0. Confirm the intended pair and review the evidence.
+& $uleravo @capture --output "$demo/baseline.json"
+& $uleravo capability-graph-compare "$demo/baseline.json" "$demo/baseline.json"
+# Complete declared-disabled. Review the evidence, then explicitly retain it:
+& $uleravo review-record "$demo/baseline.json" --format json --output "$demo/baseline.review.json"
 
-[IO.File]::WriteAllText("$demo/skill/SKILL.md", $skill + "Explain the result clearly.`n")
-node ./dist/cli.js @capture --output "$demo/bytes-changed.json"
-node ./dist/cli.js capability-graph-compare "$demo/baseline.json" "$demo/bytes-changed.json"
-# Result: changed; Skill bytes: different; Declaration groups: same; exit 0.
+[IO.File]::WriteAllText("$demo/config.toml", $config.Replace("false", "true"))
+& $uleravo @capture --output "$demo/enabled.json"
+& $uleravo capability-graph-compare "$demo/baseline.json" "$demo/enabled.json"
+# Explanation: Skill bytes same; declarations different; declared-disabled -> declared-enabled.
+& $uleravo review-check "$demo/baseline.review.json" "$demo/enabled.json"
+# Review result: changed-since-review; exit 1 (comparison alone exits 0 for complete changes).
 
-[IO.File]::WriteAllText("$demo/config.toml", $config.Replace("true", "false"))
-node ./dist/cli.js @capture --output "$demo/disabled.json"
-node ./dist/cli.js capability-graph-compare "$demo/bytes-changed.json" "$demo/disabled.json" --format json --output "$demo/declaration-comparison.json"
-# Result JSON: changed; skillBytes: same; declarations: different; enabled -> disabled; exit 0.
+# Proposed manual restoration: if enablement was unintended, restore enabled = false
+# in the matching supplied declaration. This synthetic example restores its original bytes:
+[IO.File]::WriteAllText("$demo/config.toml", $config)
+& $uleravo @capture --output "$demo/restored.json"
+& $uleravo capability-graph-compare "$demo/baseline.json" "$demo/restored.json" --format json --output "$demo/restoration-comparison.json"
+$restoration = Get-Content -LiteralPath "$demo/restoration-comparison.json" -Raw | ConvertFrom-Json
+if (!$restoration.complete -or $restoration.status -ne "unchanged") { throw "Review the restoration comparison before retaining evidence." }
+# Captured evidence matches the original baseline; this does not verify runtime security.
+& $uleravo review-record "$demo/restored.json" --format json --output "$demo/restored.review.json"
 
-[IO.File]::WriteAllText("$demo/config.toml", "[broken`n")
-node ./dist/cli.js @capture --output "$demo/incomplete.json"
-node ./dist/cli.js capability-graph-compare "$demo/disabled.json" "$demo/incomplete.json"
-# Both commands exit 2. Comparison: incomplete, with current-side diagnostics.
+# Every later check starts with a fresh capture and a new filename:
+& $uleravo @capture --output "$demo/current.json"
+& $uleravo review-check "$demo/restored.review.json" "$demo/current.json"
+# Review result: matches-evidence; exit 0. Both earlier receipts remain untouched.
 ```
 
-This workflow retains evidence files for human review. It does not save an approval decision or enforce runtime permissions.
+For library callers, `recordSkillReview(graph)`, `parseSkillReviewReceipt(json)`, `readSkillReviewReceipt(path)`, and `checkSkillReview(receipt, currentGraph)` expose the same strict evidence boundary; receipt and check text/JSON formatters are exported. Validation errors throw; a valid unknown or version-limited current graph returns `cannot-check`. These functions neither capture fresh evidence implicitly nor write files.
 
 Use the [rule guide](docs/rules.md) to understand each detector's trigger, safe patterns, and precision boundary. Use the [result-reporting guide](docs/reporting-results.md) to submit a correction without exposing private source or scanner evidence.
 

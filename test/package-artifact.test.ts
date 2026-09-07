@@ -421,6 +421,36 @@ async function assertInstalledGraphComparison(fixture: {
     path.join(fixture.installedRoot, "schemas", "capability-graph-comparison.schema.json"),
   );
   const originalBaseline = await readFile(fixture.baseline, "utf8");
+  await access(path.join(fixture.installedRoot, "schemas", "skill-review-receipt.schema.json"));
+  const receipt = path.join(fixture.workspace, "baseline.review.json");
+  const reviewText = await invoke(["review-record", fixture.baseline]);
+  expect(String(reviewText.stdout)).toContain("reviewed-captured-evidence (caller-declared)");
+  expect(String(reviewText.stdout)).toContain("unsigned-unauthenticated");
+  await invoke(["review-record", fixture.baseline, "--format", "json", "--output", receipt]);
+  const receiptBytes = await readFile(receipt, "utf8");
+  const checkReview = (current: string, options: string[] = []) =>
+    invoke(["review-check", receipt, current, ...options]);
+  const matchText = await checkReview(fixture.baseline);
+  expect(String(matchText.stdout)).toContain("Review result: matches-evidence");
+  expect(String(matchText.stdout)).toContain("Recapture before checking");
+  const matchJson = await checkReview(fixture.baseline, ["--format", "json"]);
+  expect(JSON.parse(String(matchJson.stdout))).toMatchObject({
+    status: "matches-evidence",
+    comparison: { complete: true, status: "unchanged" },
+  });
+  const reordered = path.join(fixture.workspace, "reordered.graph.json");
+  await writeFile(
+    reordered,
+    JSON.stringify(
+      JSON.parse(originalBaseline, (_key, value: unknown) =>
+        typeof value === "object" && value !== null && !Array.isArray(value)
+          ? Object.fromEntries(Object.entries(value).reverse())
+          : value,
+      ),
+    ),
+  );
+  const canonical = await invoke(["review-record", reordered, "--format", "json"]);
+  expect(String(canonical.stdout)).toBe(receiptBytes);
   const unchangedText = await compare(fixture.baseline, fixture.baseline);
   expect(String(unchangedText.stdout)).toContain("Result: unchanged");
   expect(String(unchangedText.stdout)).toContain("installation continuity is not established");
@@ -448,6 +478,16 @@ async function assertInstalledGraphComparison(fixture: {
   const bytesText = await compare(fixture.baseline, bytesChanged);
   expect(String(bytesText.stdout)).toContain("Skill bytes: different");
   expect(String(bytesText.stdout)).toContain("Declaration groups: same");
+  await expect(checkReview(bytesChanged, ["--format", "json"])).rejects.toMatchObject({
+    code: 1,
+    stdout: expect.stringContaining('"status": "changed-since-review"'),
+  });
+  await expect(checkReview(bytesChanged)).rejects.toMatchObject({
+    code: 1,
+    stdout: expect.stringContaining("Skill bytes: different"),
+  });
+  const bytesReceipt = path.join(fixture.workspace, "bytes.review.json");
+  await invoke(["review-record", bytesChanged, "--format", "json", "--output", bytesReceipt]);
 
   await writeFile(
     fixture.config,
@@ -465,6 +505,26 @@ async function assertInstalledGraphComparison(fixture: {
   const declarationText = await compare(bytesChanged, disabled);
   expect(String(declarationText.stdout)).toContain("declared-enabled");
   expect(String(declarationText.stdout)).toContain("declared-disabled");
+  await expect(invoke(["review-check", bytesReceipt, disabled])).rejects.toMatchObject({
+    code: 1,
+    stdout: expect.stringContaining("declared-enabled -> declared-disabled"),
+  });
+  for (const output of [fixture.baseline, receipt, disabled]) {
+    await expect(invoke(["review-record", disabled, "--output", output])).rejects.toMatchObject({
+      code: 2,
+    });
+    await expect(checkReview(disabled, ["--output", output])).rejects.toMatchObject({ code: 2 });
+  }
+  expect(await readFile(receipt, "utf8")).toBe(receiptBytes);
+  const invalidReceipt = path.join(fixture.workspace, "invalid.review.json");
+  await writeFile(
+    invalidReceipt,
+    receiptBytes.replace('"scope": "advisory-only"', '"scope": "enforced"'),
+  );
+  await expect(invoke(["review-check", invalidReceipt, disabled])).rejects.toMatchObject({
+    code: 2,
+    stdout: "",
+  });
 
   const comparisonPath = path.join(fixture.workspace, "graph-comparison.json");
   await compare(bytesChanged, disabled, ["--format", "json", "--output", comparisonPath]);
@@ -487,6 +547,14 @@ async function assertInstalledGraphComparison(fixture: {
   await expect(compare(incomplete, incomplete)).rejects.toMatchObject({
     code: 2,
     stdout: expect.stringContaining("Result: incomplete"),
+  });
+  await expect(checkReview(incomplete, ["--format", "json"])).rejects.toMatchObject({
+    code: 2,
+    stdout: expect.stringContaining('"status": "cannot-check"'),
+  });
+  await expect(invoke(["review-record", incomplete])).rejects.toMatchObject({
+    code: 2,
+    stdout: "",
   });
 }
 

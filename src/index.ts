@@ -64,6 +64,15 @@ export {
   parseSkillCapabilityGraph,
   readSkillCapabilityGraph,
 } from "./capability-graph/read.js";
+export { readSkillReviewReceipt } from "./capability-graph/read-review.js";
+export type { SkillReviewCheck, SkillReviewReceipt } from "./capability-graph/review.js";
+export {
+  checkSkillReview,
+  MAX_SKILL_REVIEW_RECEIPT_BYTES,
+  parseSkillReviewReceipt,
+  recordSkillReview,
+  SKILL_REVIEW_SCHEMA_VERSION,
+} from "./capability-graph/review.js";
 export type {
   ComparisonSummary,
   ReportComparison,
@@ -105,6 +114,12 @@ export {
 export { formatComparisonJson, formatComparisonText } from "./formatters/comparison.js";
 export { formatJson } from "./formatters/json.js";
 export { formatSarif } from "./formatters/sarif.js";
+export {
+  formatSkillReviewCheckJson,
+  formatSkillReviewCheckText,
+  formatSkillReviewReceiptJson,
+  formatSkillReviewReceiptText,
+} from "./formatters/skill-review.js";
 export { formatText } from "./formatters/text.js";
 export { snapshotCodexHarness } from "./harnesses/codex.js";
 export { compareCodexHarnessSnapshots } from "./harnesses/comparison.js";

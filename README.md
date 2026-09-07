@@ -2,13 +2,15 @@
 
 Capture a Skill's declared exposure, compare fresh evidence with a reviewed baseline, and retain the review locally. Uleravo reads bounded local files without executing the target or uploading source. Captured declarations and advisory reviews are evidence for a person; they do not establish runtime behavior, safety, or enforcement.
 
-**Local release candidate: `0.8.0-rc.1`, private and unpublished.** Install the supplied `uleravo-0.8.0-rc.1.tgz` and verify its accompanying `.sha256` file below. This candidate is not available from a public registry or release URL.
+**Public release candidate: `0.8.0-rc.1`.** Download the [candidate archive](https://uleravo.com/downloads/uleravo-0.8.0-rc.1.tgz) and [SHA-256 checksum](https://uleravo.com/downloads/uleravo-0.8.0-rc.1.tgz.sha256), save them together, then verify and install below. This is a release candidate distributed as an archive; it is not published to the npm registry.
 
-[MCP scanning and released v0.7.0 installation](docs/mcp-scanning.md) · [GitHub Action](docs/github-action.md) · [Skill evidence contracts and limits](docs/skill-review.md)
+[0.8.0-rc.1 release notes](https://github.com/Throneee/uleravo/blob/main/docs/releases/0.8.0-rc.1.md) · [MCP scanning and prior v0.7.0 installation](docs/mcp-scanning.md) · [GitHub Action](docs/github-action.md) · [Skill evidence contracts and limits](docs/skill-review.md)
+
+The accepted archive is immutable. Its bundled README retains the local/private candidate wording from before publication; the installation and synthetic walkthrough commands remain unchanged. Use this source README and the release notes for current availability.
 
 ## Start here: review one Skill
 
-Requirements: Node.js **22.13 or newer** and npm. Start in the directory containing the supplied archive and checksum sidecar. Installation may fetch pinned dependencies if they are absent from your cache; default analysis itself is local. No account, credential, running agent, or source checkout is needed for this synthetic walkthrough.
+Requirements: Node.js **22.13 or newer** and npm. Start in the directory containing the downloaded archive and checksum sidecar. Installation may fetch pinned dependencies if they are absent from your cache; default analysis itself is local. No account, credential, running agent, or source checkout is needed for this synthetic walkthrough.
 
 Choose one shell below. It installs into a fresh temporary consumer and copies the [packaged inert example](examples/skill-review/skill/SKILL.md). The separate synthetic user configuration explicitly disables that exact Skill. Its relative path resolves from the configuration's directory. The empty project has no optional `.codex/config.toml`; only system requirements are excluded. All reports are outside the Skill root.
 
@@ -147,14 +149,14 @@ A receipt is **caller-declared, unsigned, unauthenticated, and advisory-only**. 
 
 | Identity | Version / scope |
 |---|---|
-| Local candidate package and CLI | `0.8.0-rc.1`; private and unpublished |
+| Public candidate package and CLI | `0.8.0-rc.1`; archive download, no npm registry publication |
 | MCP analyzer | `0.6.3`; established MCP scan IDs preserved |
 | Artifact and Codex harness analyzers | `0.7.0`; graph, comparison, and receipt schemas/identities unchanged |
-| Immutable released package | `0.7.0`; lacks the graph and retained-review commands |
+| Prior immutable released package | `0.7.0`; lacks the graph and retained-review commands |
 
-The candidate's complete local workflow is capture → compare → manual review/restoration → recapture → retain → check again. Hosted monitoring, organization policy, a dashboard, and runtime protection are not current capabilities. No release or website publication is implied by this candidate.
+The candidate's complete local workflow is capture → compare → manual review/restoration → recapture → retain → check again. Hosted monitoring, organization policy, a dashboard, and runtime protection are not current capabilities. The source package retains `private: true` to prevent npm registry publication.
 
-[Artifact snapshots](docs/v0.7-artifact-snapshots.md) and [Codex harness / permission delta](docs/v0.7-codex-harness.md) provide the richer separate reports. The [MCP guide](docs/mcp-scanning.md) preserves the rule catalog, immutable archive installation, scan/compare/sign recipes, accuracy policy, and Action overview. Published archives and Action commit pins remain unchanged.
+[Artifact snapshots](docs/v0.7-artifact-snapshots.md) and [Codex harness / permission delta](docs/v0.7-codex-harness.md) provide the richer separate reports. The [MCP guide](docs/mcp-scanning.md) preserves the rule catalog, immutable archive installation, scan/compare/sign recipes, accuracy policy, and Action overview. Previously published archives remain unchanged; the current source observation template pins the reviewed candidate commit documented in the [Action guide](docs/github-action.md).
 
 ## Build a local candidate from source
 

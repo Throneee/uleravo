@@ -23,8 +23,8 @@ jobs:
       # Findings are observational. Scanner/configuration errors still fail this step.
       - name: Scan with Uleravo
         id: uleravo
-        # Immutable pin to the reviewed public Commit A distribution.
-        uses: Throneee/uleravo@81967c579878fe5dd245bd67a5238e0c5d6ce42f
+        # Immutable pin to the reviewed 0.8.0-rc.1 candidate distribution.
+        uses: Throneee/uleravo@27706759b00facf0d42c868b243194ef5a9b933d
         with:
           target: .
           fail-on: none

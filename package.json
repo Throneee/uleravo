@@ -20,6 +20,7 @@
     "docs/architecture.md",
     "docs/skill-review.md",
     "docs/mcp-scanning.md",
+    "docs/monitoring.md",
     "docs/v0.7-artifact-snapshots.md",
     "docs/v0.7-codex-harness.md",
     "docs/github-action.md",
@@ -52,7 +53,7 @@
     "prepack": "npm run build",
     "scan:self": "node dist/cli.js scan . --exclude test --exclude examples/reports/sample-target --fail-on high",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage --maxWorkers=2",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

@@ -92,6 +92,22 @@ describe("signing CLI", () => {
 });
 
 describe("CLI entrypoint", () => {
+  it("discovers read-only monitoring from top-level help", async () => {
+    expect(await main(["--help"])).toBe(0);
+    const output = vi.mocked(process.stdout.write).mock.calls.join(" ");
+    expect(output).toContain("uleravo monitor --project <directory> [options]");
+    expect(output).toContain("uleravo monitor --help");
+    expect(output).toContain("Read-only declarations; no upload by default.");
+  });
+  it("dispatches read-only monitoring through the installed CLI", async () => {
+    const directory = await makeTemporaryDirectory();
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    expect(await main(["monitor", "--project", directory])).toBe(0);
+    const snapshot = JSON.parse(String(log.mock.calls[0]?.[0]));
+    expect(snapshot.schemaVersion).toBe(1);
+    expect(snapshot.configurations.length).toBeGreaterThan(0);
+    expect(snapshot.findings).toEqual([]);
+  });
   it("does not reveal a credential boundary created by error truncation", async () => {
     const credential = `AKIA${"A".repeat(16)}`;
     const craftedTarget = path.join(tmpdir(), `${"\u007F".repeat(122)}----${credential}X`);

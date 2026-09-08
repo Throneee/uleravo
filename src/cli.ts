@@ -77,6 +77,14 @@ const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<number> {
   try {
+    if (argv[0] === "check") {
+      const { runCheck } = await import("./check/index.js");
+      return await runCheck([...argv.slice(1)]);
+    }
+    if (argv[0] === "monitor") {
+      const { runMonitor } = await import("./monitor/index.js");
+      return await runMonitor([...argv.slice(1)]);
+    }
     const parsed = parseCli(argv);
     if (parsed.action === "help") {
       process.stdout.write(helpText());
@@ -1155,6 +1163,10 @@ function helpText(): string {
     `${PRODUCT_NAME} ${VERSION}`,
     "",
     "Usage:",
+    `  ${PRODUCT_SLUG} check [project]`,
+    `    Prioritized local declaration review (default: current directory). See: ${PRODUCT_SLUG} check --help`,
+    `  ${PRODUCT_SLUG} monitor --project <directory> [options]`,
+    `    Read-only declarations; no upload by default. See: ${PRODUCT_SLUG} monitor --help`,
     `  ${PRODUCT_SLUG} scan [target] [options]`,
     `  ${PRODUCT_SLUG} compare <baseline.json> <current.json> [options]`,
     `  ${PRODUCT_SLUG} snapshot [target] --kind <skill|plugin> [options]`,

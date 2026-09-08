@@ -20,6 +20,7 @@
     "docs/architecture.md",
     "docs/skill-review.md",
     "docs/mcp-scanning.md",
+    "docs/monitoring.md",
     "docs/v0.7-artifact-snapshots.md",
     "docs/v0.7-codex-harness.md",
     "docs/github-action.md",
@@ -37,7 +38,7 @@
     "uleravo": "./dist/cli.js"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": "^22.23.2 || ^24.19.0"
   },
   "packageManager": "pnpm@11.19.0",
   "scripts": {
@@ -52,7 +53,7 @@
     "prepack": "npm run build",
     "scan:self": "node dist/cli.js scan . --exclude test --exclude examples/reports/sample-target --fail-on high",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage --maxWorkers=2",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

@@ -8,9 +8,25 @@ Capture a Skill's declared exposure, compare fresh evidence with a reviewed base
 
 The accepted archive is immutable. Its bundled README retains the local/private candidate wording from before publication; the installation and synthetic walkthrough commands remain unchanged. Use this source README and the release notes for current availability.
 
-## Start here: review one Skill
+## First local result: check project configuration (unreleased)
 
-Requirements: Node.js **22.13 or newer** and npm. Start in the directory containing the downloaded archive and checksum sidecar. Installation may fetch pinned dependencies if they are absent from your cache; default analysis itself is local. No account, credential, running agent, or source checkout is needed for this synthetic walkthrough.
+**Development addition, not present in the immutable public `0.8.0-rc.1` or local `0.9.0-rc.2` archives.** After installing a build that includes `check`, use the installed command from your project:
+
+```sh
+uleravo check                 # current directory; no account or user-wide reads
+uleravo check "PATH/TO/PROJECT"
+# Review the named local file/field, make a manual edit, then repeat the same command.
+```
+
+For a local npm installation, use `./node_modules/.bin/uleravo` (Windows PowerShell: `./node_modules/.bin/uleravo.cmd`) instead of `uleravo` if it is not on PATH. Run `uleravo check --help` to confirm the installed build supports it; the older archives above have not been changed.
+
+The first screen lists actually covered **harness/project configuration groups**, then prioritized findings with title, severity, relative file/field, reason and manual next step. No hash copying, evidence-file selection, upload, credential lookup, watch or target execution. It reuses the monitoring capture and safe-locator pipeline for existing Claude Code, Cursor and Codex project settings—not a Skill malware detector or runtime protection.
+
+Exit **1** means declarations need review; **0** means a complete covered review observed no supported findings, **not security or resolution**; **2** means invalid arguments/target, no coverage or incomplete review. Missing groups remain unobserved. A Skill-only or empty directory has no coverage. After a manual change, recheck the same project; there is no stored baseline or automatic edit. See [coverage and limits](docs/monitoring.md#quick-project-check-unreleased).
+
+## Existing installed walkthrough: review one Skill
+
+Requirements: a supported Node.js LTS runtime (**22.23.2 or newer on the 22.x line**, or **24.19.0 or newer on the 24.x line**) and npm. These are verified baselines, not a claim about the earliest fixed versions. Earlier Windows runtimes can return inconsistent file identity metadata; Uleravo keeps its reader fail-closed rather than ignoring that mismatch. See [runtime support](docs/monitoring.md#runtime-support). Existing downloaded archives remain unchanged; their older metadata does not supersede this compatibility finding. Start in the directory containing the archive and checksum sidecar. Installation may fetch pinned dependencies if they are absent from your cache; default analysis itself is local. No account, credential, running agent, or source checkout is needed for this synthetic walkthrough.
 
 Choose one shell below. It installs into a fresh temporary consumer and copies the [packaged inert example](examples/skill-review/skill/SKILL.md). The separate synthetic user configuration explicitly disables that exact Skill. Its relative path resolves from the configuration's directory. The empty project has no optional `.codex/config.toml`; only system requirements are excluded. All reports are outside the Skill root.
 

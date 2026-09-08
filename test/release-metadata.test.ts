@@ -2,6 +2,7 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { parse as parseYaml } from "yaml";
 import { formatJson } from "../src/formatters/json.js";
 import { readScanReport } from "../src/reports/read.js";
 import { scan } from "../src/scanner/scan.js";
@@ -19,6 +20,22 @@ import {
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("release metadata", () => {
+  it("aligns declared runtime support with verified LTS metadata baselines", async () => {
+    const [metadata, workflow, readme, monitoring] = await Promise.all([
+      readFile(path.join(repositoryRoot, "package.json"), "utf8"),
+      readFile(path.join(repositoryRoot, ".github/workflows/ci.yml"), "utf8"),
+      readFile(path.join(repositoryRoot, "README.md"), "utf8"),
+      readFile(path.join(repositoryRoot, "docs/monitoring.md"), "utf8"),
+    ]);
+    expect(JSON.parse(metadata).engines.node).toBe("^22.23.2 || ^24.19.0");
+    expect(parseYaml(workflow).jobs.quality.strategy.matrix.node).toEqual(["22.23.2", "24.19.0"]);
+    expect(readme).toContain("22.23.2");
+    expect(readme).toContain("24.19.0");
+    expect(monitoring).toContain("^22.23.2 || ^24.19.0");
+    expect(monitoring).toContain("22.13.0");
+    expect(monitoring).toContain("not the earliest fixed releases");
+  });
+
   it("aligns the private candidate package while preserving existing analyzer identities", async () => {
     const packageMetadata = JSON.parse(
       await readFile(path.join(repositoryRoot, "package.json"), "utf8"),

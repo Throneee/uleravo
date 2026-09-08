@@ -2,6 +2,14 @@
 
 `uleravo monitor` observes configuration declarations. It does not launch, proxy, pause, or block an agent; run MCP commands, shells, hooks or credential helpers; read prompts or tool arguments from a running agent; or determine effective permissions. Findings are review suggestions, not proof of exploitation or runtime enforcement.
 
+## Runtime support
+
+Current source supports the verified LTS ranges `^22.23.2 || ^24.19.0`. CI is configured to run the same full checks on Windows and Linux at Node 22.23.2 and 24.19.0. These are selected verified baselines, **not the earliest fixed releases**.
+
+An actual Windows Node 22.13.0 investigation found conflicting pathname/handle device IDs for the same unchanged file. Its bundled libuv reads the native Windows metadata structure incorrectly; changing to BigInt does not recover the missing device identity. The reader deliberately retains strict device, inode, size, timestamp and path checks. Earlier or other undeclared runtimes are not covered by this source support policy; use a supported runtime rather than bypassing a failed identity check.
+
+This does not change a published archive's bytes or retroactively certify an old runtime. The current source's stricter runtime metadata and the unchanged older archives are separate artifacts. The underlying fixes are [libuv's structure-layout correction](https://github.com/libuv/libuv/commit/abe59d6319973cbff0686f41869cf8ae50bab1d2) and [consistent volume serial handling](https://github.com/libuv/libuv/commit/82cdfb75ff9bbd0dc65820ca418b7c5d412ff4d7).
+
 ## Quick project check (unreleased)
 
 `check` is a development addition; it is **not in the unchanged `0.8.0-rc.1` or `0.9.0-rc.2` archives**. With a build containing it installed, start in your project:

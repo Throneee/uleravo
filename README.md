@@ -26,7 +26,7 @@ Exit **1** means declarations need review; **0** means a complete covered review
 
 ## Existing installed walkthrough: review one Skill
 
-Requirements: Node.js **22.13 or newer** and npm. Start in the directory containing the downloaded archive and checksum sidecar. Installation may fetch pinned dependencies if they are absent from your cache; default analysis itself is local. No account, credential, running agent, or source checkout is needed for this synthetic walkthrough.
+Requirements: a supported Node.js LTS runtime (**22.23.2 or newer on the 22.x line**, or **24.19.0 or newer on the 24.x line**) and npm. These are verified baselines, not a claim about the earliest fixed versions. Earlier Windows runtimes can return inconsistent file identity metadata; Uleravo keeps its reader fail-closed rather than ignoring that mismatch. See [runtime support](docs/monitoring.md#runtime-support). Existing downloaded archives remain unchanged; their older metadata does not supersede this compatibility finding. Start in the directory containing the archive and checksum sidecar. Installation may fetch pinned dependencies if they are absent from your cache; default analysis itself is local. No account, credential, running agent, or source checkout is needed for this synthetic walkthrough.
 
 Choose one shell below. It installs into a fresh temporary consumer and copies the [packaged inert example](examples/skill-review/skill/SKILL.md). The separate synthetic user configuration explicitly disables that exact Skill. Its relative path resolves from the configuration's directory. The empty project has no optional `.codex/config.toml`; only system requirements are excluded. All reports are outside the Skill root.
 

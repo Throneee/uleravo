@@ -1,5 +1,15 @@
 import { spawnSync } from "node:child_process";
-import { access, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  access,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -11,8 +21,12 @@ let root: string;
 let project: string;
 let guard: string;
 let marker: string;
+let typescriptFile: string;
 let env: NodeJS.ProcessEnv;
 beforeAll(async () => {
+  typescriptFile = await realpath(
+    path.join(repository, "node_modules/typescript/lib/typescript.js"),
+  );
   root = await mkdtemp(path.join(os.tmpdir(), "uleravo-check-cli-"));
   project = path.join(root, "project");
   const home = path.join(root, "synthetic-home");
@@ -92,8 +106,22 @@ const moduleLoader = () => {
 };
 const noTargetIO = process.env.CHECK_TEST_NO_TARGET_IO === "1";
 const entrypoint = normalized(${JSON.stringify(path.join(build, "cli.js"))});
+// TypeScript probes only its own case-swapped filename during initialization.
+// This is one exact statSync/call-chain exception, not module-tree metadata access.
+const typescriptSource = ${JSON.stringify(typescriptFile)};
+const typescriptCaseProbe = typescriptSource.replace(/\\w/g, (character) =>
+  character.toUpperCase() === character ? character.toLowerCase() : character.toUpperCase());
+let caseProbeAvailable = true;
 const metadataGuard = (original, name) => function(file, ...args) {
   const resolved = normalized(file);
+  if (name === "statSync" && caseProbeAvailable && file === typescriptCaseProbe && args[0]?.throwIfNoEntry === false) {
+    const frames = new Error().stack?.split("\\n").slice(2, 7) ?? [];
+    if (["statSync", "fileSystemEntryExists", "fileExists", "isFileSystemCaseSensitive", "getNodeSystem"].every((caller, index) =>
+      frames[index]?.startsWith("    at " + caller + " (" + typescriptSource + ":"))) {
+      caseProbeAvailable = false;
+      return original.call(this, file, ...args);
+    }
+  }
   // CLI startup compares exactly its own entrypoint via realpath; not target I/O.
   if (name === "realpath" && resolved === entrypoint) return original.call(this, file, ...args);
   if (!(resolved.startsWith(modules) && moduleLoader()) && (noTargetIO || !metadata.has(resolved))) return forbidden();
@@ -108,12 +136,22 @@ for (const name of ["lstat", "stat", "realpath", "access", "readlink", "readdir"
 const readOnly = (flag = "r") => typeof flag === "number"
   ? !(flag & (fs.constants.O_WRONLY | fs.constants.O_RDWR | fs.constants.O_APPEND | fs.constants.O_CREAT | fs.constants.O_TRUNC))
   : ["r", "rs", "sr"].includes(flag);
+// A synchronous loader read may re-enter the guarded openSync via node:fs.
+// Carry only that exact file, only for that call, never through module evaluation.
+let loaderRead;
 const readGuard = (original, name) => function(file, ...args) {
   const flag = name.startsWith("open") ? args[0] : args[0]?.flag ?? args[0]?.flags;
   if (!readOnly(flag)) return forbidden();
   const resolved = normalized(file);
-  if (!(resolved.startsWith(modules) && moduleLoader()) && (noTargetIO || !allowed.has(resolved))) return forbidden();
-  return original.call(this, file, ...args);
+  const directLoader = resolved.startsWith(modules) && moduleLoader();
+  const nestedLoaderOpen = name === "openSync" && loaderRead === resolved &&
+    /^\\s+at (?:Object\\.)?readFileSync \\(node:fs:/.test(new Error().stack?.split("\\n")[2] ?? "");
+  if (!(directLoader || nestedLoaderOpen) && (noTargetIO || !allowed.has(resolved))) return forbidden();
+  if (!directLoader || name !== "readFileSync") return original.call(this, file, ...args);
+  const previous = loaderRead;
+  loaderRead = resolved;
+  try { return original.call(this, file, ...args); }
+  finally { loaderRead = previous; }
 };
 for (const name of ["open", "readFile"]) fsp[name] = readGuard(fsp[name], name);
 for (const name of ["open", "readFile", "openSync", "readFileSync", "createReadStream"]) fs[name] = readGuard(fs[name], name);
@@ -124,9 +162,6 @@ for (const name of ["writeFile", "appendFile", "rename", "unlink", "rm", "rmdir"
 for (const name of ["write", "writev", "ftruncate", "fchmod", "fchown", "futimes"]) fs[name] = fs[name + "Sync"] = forbidden;
 fs.createWriteStream = forbidden;
 syncBuiltinESMExports();
-const syntheticCwd = process.env.CHECK_TEST_CWD;
-// Contract double: only JS cwd changes. The OS child cwd stays the benign fixture.
-if (syntheticCwd !== undefined) process.cwd = () => syntheticCwd;
 const originalEnv = process.env;
 process.env = new Proxy(originalEnv, { get(target, key) {
   if (typeof key === "string" && /TOKEN|SECRET|PASSWORD|API_KEY/.test(key)) return forbidden();
@@ -146,6 +181,24 @@ function cli(args: string[], overrides: NodeJS.ProcessEnv = {}) {
     {
       cwd: project,
       env: { ...env, ...overrides },
+      encoding: "utf8",
+      timeout: 5000,
+    },
+  );
+}
+
+function cwdContract(args: string[], cwd: string) {
+  // Contract double, not a real OS cwd or CLI entrypoint invocation. Initialize
+  // the real compiled module first so Node never resolves modules from fake cwd.
+  const script = `const { main } = await import(${JSON.stringify(pathToFileURL(path.join(build, "cli.js")).href)});
+    process.cwd = () => ${JSON.stringify(cwd)};
+    process.exitCode = await main(${JSON.stringify(args)});`;
+  return spawnSync(
+    process.execPath,
+    ["--import", pathToFileURL(guard).href, "--input-type=module", "-e", script],
+    {
+      cwd: project,
+      env: { ...env, CHECK_TEST_NO_TARGET_IO: "1" },
       encoding: "utf8",
       timeout: 5000,
     },
@@ -186,14 +239,17 @@ it.each([
   "//fixture.invalid/share/project",
   String.raw`\\?\UNC\fixture.invalid\share\project`,
   String.raw`\Device\Mup\fixture.invalid\share\project`,
-])("compiled rejects a controlled cwd-contract double with zero target I/O: %j", async (cwd) => {
-  for (const args of [[], ["."], [project]]) {
-    const result = cli(["check", ...args], { CHECK_TEST_NO_TARGET_IO: "1", CHECK_TEST_CWD: cwd });
-    expect(result.status, result.stderr).toBe(2);
-    expect(result.stdout).toContain("Unsupported local target syntax");
-    await expect(access(marker)).rejects.toMatchObject({ code: "ENOENT" });
-  }
-});
+])(
+  "compiled main rejects a post-initialization cwd-contract double with zero target I/O: %j",
+  async (cwd) => {
+    for (const args of [[], ["."], [project]]) {
+      const result = cwdContract(["check", ...args], cwd);
+      expect(result.status, result.stderr).toBe(2);
+      expect(result.stdout).toContain("Unsupported local target syntax");
+      await expect(access(marker)).rejects.toMatchObject({ code: "ENOENT" });
+    }
+  },
+);
 
 it("exercises the compiled fresh check/edit/recheck and wire contract under selected API guards", async () => {
   const file = path.join(project, ".codex/config.toml");
@@ -307,68 +363,214 @@ it("compiled renders the multi-harness canary then withholds all locations on in
     await rm(path.join(project, file));
 }, 30000);
 
-it("positive-controls compiled metadata tripwires on a benign synthetic-home directory", async () => {
-  for (const module of ["node:fs/promises", "node:fs"]) {
-    for (const method of module.endsWith("promises")
-      ? ["lstat", "stat", "realpath"]
-      : ["lstat", "stat", "realpath", "lstatSync", "statSync", "realpathSync"]) {
-      const callback = module === "node:fs" && !method.endsWith("Sync") ? ", () => {}" : "";
-      const script = `const fs = await import(${JSON.stringify(module)}); await fs[${JSON.stringify(method)}](${JSON.stringify(env.HOME)}${callback});`;
-      const result = spawnSync(
-        process.execPath,
-        ["--import", pathToFileURL(guard).href, "--input-type=module", "-e", script],
-        { cwd: project, env, encoding: "utf8", timeout: 5000 },
-      );
-      expect(result.status, `${module}.${method}: ${result.stderr}`).not.toBe(0);
-      expect(await readFile(marker, "utf8")).toBe("attempted");
-      await rm(marker);
-    }
-  }
-}, 30000);
+const guardModes = [{ CHECK_TEST_NO_TARGET_IO: "0" }, { CHECK_TEST_NO_TARGET_IO: "1" }];
 
-it("positive-controls compiled mutation tripwires using disposable project files", async () => {
-  for (const module of ["node:fs/promises", "node:fs"]) {
-    for (const [method, args] of [
-      ["writeFile", "'.mcp.json', 'changed'"],
-      ["appendFile", "'.mcp.json', 'changed'"],
-      ["rename", "'.mcp.json', 'renamed'"],
-      ["unlink", "'.mcp.json'"],
-      ["rm", "'.mcp.json'"],
-      ["open", "'.mcp.json', 'r+'"],
-    ]) {
-      for (const suffix of module === "node:fs" ? ["", "Sync"] : [""]) {
-        await writeFile(path.join(project, ".mcp.json"), "inert");
-        const callback = module === "node:fs" && !suffix ? ", () => {}" : "";
-        const script = `const fs = await import(${JSON.stringify(module)}); await fs.${method}${suffix}(${args}${callback});`;
+it.each(guardModes)(
+  "permits TypeScript's own case probe, not application metadata or content reads: %j",
+  async (mode) => {
+    const load = `await import(${JSON.stringify(pathToFileURL(typescriptFile).href)});`;
+    const loaded = spawnSync(
+      process.execPath,
+      ["--import", pathToFileURL(guard).href, "--input-type=module", "-e", load],
+      { cwd: project, env: { ...env, ...mode }, encoding: "utf8", timeout: 5000 },
+    );
+    expect(loaded.status, loaded.stderr).toBe(0);
+    await expect(access(marker)).rejects.toMatchObject({ code: "ENOENT" });
+    const swapped = typescriptFile.replace(/\w/g, (character) =>
+      character.toUpperCase() === character ? character.toLowerCase() : character.toUpperCase(),
+    );
+    for (const target of [typescriptFile, swapped]) {
+      for (const method of ["statSync", "lstatSync", "readFileSync"]) {
+        // Repeat the exact case-probe arguments after initialization, but from an
+        // application caller; even that precise path/options must remain blocked.
+        const args = method === "statSync" ? ", { throwIfNoEntry: false }" : "";
+        const script = `${load} (await import("node:fs")).${method}(${JSON.stringify(target)}${args});`;
         const result = spawnSync(
           process.execPath,
           ["--import", pathToFileURL(guard).href, "--input-type=module", "-e", script],
-          { cwd: project, env, encoding: "utf8", timeout: 5000 },
+          { cwd: project, env: { ...env, ...mode }, encoding: "utf8", timeout: 5000 },
         );
-        expect(result.status, `${module}.${method}${suffix}: ${result.stderr}`).not.toBe(0);
+        expect(result.status, result.stderr).toBe(1);
+        expect(result.stderr).toContain("Forbidden side effect");
         expect(await readFile(marker, "utf8")).toBe("attempted");
-        expect(await readFile(path.join(project, ".mcp.json"), "utf8")).toBe("inert");
         await rm(marker);
       }
     }
-  }
-  await rm(path.join(project, ".mcp.json"));
-}, 30000);
+  },
+);
 
-it("does not grant arbitrary application reads just because a file is under node_modules", async () => {
-  const moduleFile = path.join(repository, "node_modules/typescript/package.json");
-  for (const method of ["readFile", "lstat", "stat", "realpath"]) {
-    const script = `const fs = await import('node:fs/promises'); await fs.${method}(${JSON.stringify(moduleFile)});`;
+it.each(guardModes)(
+  "allows real ESM and CommonJS loader reads, not module initialization reads: %j",
+  async (mode) => {
+    for (const extension of ["mjs", "cjs"]) {
+      const fixture = path.join(build, `loader-fixture.${extension}`);
+      const load = `await import(${JSON.stringify(pathToFileURL(fixture).href)});`;
+      await writeFile(fixture, 'console.log("module initialized");');
+      const loaded = spawnSync(
+        process.execPath,
+        ["--import", pathToFileURL(guard).href, "--input-type=module", "-e", load],
+        { cwd: project, env: { ...env, ...mode }, encoding: "utf8", timeout: 5000 },
+      );
+      expect(loaded.status, loaded.stderr).toBe(0);
+      expect(loaded.stdout).toBe("module initialized\n");
+      await expect(access(marker)).rejects.toMatchObject({ code: "ENOENT" });
+
+      for (const method of ["readFileSync", "openSync"]) {
+        // An application frame must not inherit permission from a loader ancestor.
+        const importFs =
+          extension === "mjs" ? 'import fs from "node:fs";' : 'const fs = require("node:fs");';
+        const args = method === "openSync" ? ', "r"' : "";
+        await writeFile(
+          fixture,
+          `${importFs} console.log("application initialized"); fs.${method}(${JSON.stringify(fixture)}${args});`,
+        );
+        const attempted = spawnSync(
+          process.execPath,
+          ["--import", pathToFileURL(guard).href, "--input-type=module", "-e", load],
+          { cwd: project, env: { ...env, ...mode }, encoding: "utf8", timeout: 5000 },
+        );
+        expect(attempted.stdout).toBe("application initialized\n");
+        expect(attempted.status, attempted.stderr).toBe(1);
+        expect(attempted.stderr).toContain("Forbidden side effect");
+        expect(await readFile(marker, "utf8")).toBe("attempted");
+        await rm(marker);
+      }
+      await rm(fixture);
+    }
+  },
+);
+
+it.each(guardModes)(
+  "clears loader read authorization when the underlying read throws: %j",
+  async (mode) => {
+    const fixture = path.join(build, "loader-throws.cjs");
+    const preload = path.join(root, "loader-failure.mjs");
+    await writeFile(fixture, 'throw new Error("must not evaluate");');
+    // Read-failure contract double, scoped to this disposable module only. Use
+    // require: Node 22's ESM loader captures readFileSync before --import preloads.
+    await writeFile(
+      preload,
+      `import fs from "node:fs";
+    const original = fs.readFileSync;
+    fs.readFileSync = function(file, ...args) {
+      if (${JSON.stringify([fixture, pathToFileURL(fixture).href])}.includes(String(file))) throw new Error("loader fixture failure");
+      return original.call(this, file, ...args);
+    };`,
+    );
+    const script = `import fs from "node:fs";
+    import { createRequire } from "node:module";
+    const require = createRequire(import.meta.url);
+    try { require(${JSON.stringify(fixture)}); throw new Error("expected read failure"); }
+    catch (error) { if (error.message !== "loader fixture failure") throw error; }
+    console.log("loader read failed as intended");
+    fs.openSync(${JSON.stringify(fixture)}, "r");`;
     const result = spawnSync(
       process.execPath,
-      ["--import", pathToFileURL(guard).href, "--input-type=module", "-e", script],
-      { cwd: project, env, encoding: "utf8", timeout: 5000 },
+      [
+        "--import",
+        pathToFileURL(preload).href,
+        "--import",
+        pathToFileURL(guard).href,
+        "--input-type=module",
+        "-e",
+        script,
+      ],
+      { cwd: project, env: { ...env, ...mode }, encoding: "utf8", timeout: 5000 },
     );
-    expect(result.status, `${method}: ${result.stderr}`).not.toBe(0);
+    expect(result.stdout, result.stderr).toBe("loader read failed as intended\n");
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toContain("Forbidden side effect");
     expect(await readFile(marker, "utf8")).toBe("attempted");
     await rm(marker);
-  }
-});
+    await rm(fixture);
+    await rm(preload);
+  },
+);
+
+it.each(guardModes)(
+  "positive-controls compiled metadata tripwires on a benign synthetic-home directory: %j",
+  async (mode) => {
+    for (const module of ["node:fs/promises", "node:fs"]) {
+      for (const method of module.endsWith("promises")
+        ? ["lstat", "stat", "realpath"]
+        : ["lstat", "stat", "realpath", "lstatSync", "statSync", "realpathSync"]) {
+        const callback = module === "node:fs" && !method.endsWith("Sync") ? ", () => {}" : "";
+        const script = `const fs = await import(${JSON.stringify(module)}); await fs[${JSON.stringify(method)}](${JSON.stringify(env.HOME)}${callback});`;
+        const result = spawnSync(
+          process.execPath,
+          ["--import", pathToFileURL(guard).href, "--input-type=module", "-e", script],
+          { cwd: project, env: { ...env, ...mode }, encoding: "utf8", timeout: 5000 },
+        );
+        expect(result.status, `${module}.${method}: ${result.stderr}`).not.toBe(0);
+        expect(await readFile(marker, "utf8")).toBe("attempted");
+        await rm(marker);
+      }
+    }
+  },
+  30000,
+);
+
+it.each(guardModes)(
+  "positive-controls compiled mutation tripwires using disposable project files: %j",
+  async (mode) => {
+    for (const module of ["node:fs/promises", "node:fs"]) {
+      for (const [method, args] of [
+        ["writeFile", "'.mcp.json', 'changed'"],
+        ["appendFile", "'.mcp.json', 'changed'"],
+        ["rename", "'.mcp.json', 'renamed'"],
+        ["unlink", "'.mcp.json'"],
+        ["rm", "'.mcp.json'"],
+        ["open", "'.mcp.json', 'r+'"],
+      ]) {
+        for (const suffix of module === "node:fs" ? ["", "Sync"] : [""]) {
+          await writeFile(path.join(project, ".mcp.json"), "inert");
+          const callback = module === "node:fs" && !suffix ? ", () => {}" : "";
+          const script = `const fs = await import(${JSON.stringify(module)}); await fs.${method}${suffix}(${args}${callback});`;
+          const result = spawnSync(
+            process.execPath,
+            ["--import", pathToFileURL(guard).href, "--input-type=module", "-e", script],
+            { cwd: project, env: { ...env, ...mode }, encoding: "utf8", timeout: 5000 },
+          );
+          expect(result.status, `${module}.${method}${suffix}: ${result.stderr}`).not.toBe(0);
+          expect(await readFile(marker, "utf8")).toBe("attempted");
+          expect(await readFile(path.join(project, ".mcp.json"), "utf8")).toBe("inert");
+          await rm(marker);
+        }
+      }
+    }
+    await rm(path.join(project, ".mcp.json"));
+  },
+  30000,
+);
+
+it.each(guardModes)(
+  "does not grant arbitrary application reads just because a file is under node_modules: %j",
+  async (mode) => {
+    const moduleFile = path.join(repository, "node_modules/typescript/package.json");
+    for (const [module, method, args] of [
+      ["node:fs/promises", "readFile", ""],
+      ["node:fs/promises", "open", ", 'r'"],
+      ["node:fs/promises", "lstat", ""],
+      ["node:fs/promises", "stat", ""],
+      ["node:fs/promises", "realpath", ""],
+      ["node:fs", "readFile", ", () => {}"],
+      ["node:fs", "open", ", 'r', () => {}"],
+      ["node:fs", "readFileSync", ""],
+      ["node:fs", "openSync", ", 'r'"],
+      ["node:fs", "createReadStream", ""],
+    ]) {
+      const script = `const fs = await import(${JSON.stringify(module)}); await fs.${method}(${JSON.stringify(moduleFile)}${args});`;
+      const result = spawnSync(
+        process.execPath,
+        ["--import", pathToFileURL(guard).href, "--input-type=module", "-e", script],
+        { cwd: project, env: { ...env, ...mode }, encoding: "utf8", timeout: 5000 },
+      );
+      expect(result.status, `${method}: ${result.stderr}`).not.toBe(0);
+      expect(await readFile(marker, "utf8")).toBe("attempted");
+      await rm(marker);
+    }
+  },
+);
 
 it("positive-controls strict pre-target-I/O mode even for allowed local fixtures", async () => {
   await writeFile(path.join(project, ".mcp.json"), "{}");
@@ -396,24 +598,30 @@ it("positive-controls strict pre-target-I/O mode even for allowed local fixtures
   await rm(path.join(project, ".mcp.json"));
 });
 
-it("positive-controls selected credential property, fetch, home discovery/content and spawn guards", async () => {
-  const homeFixture = path.join(env.HOME ?? root, "home-fixture.txt");
-  await writeFile(homeFixture, "inert synthetic home content");
-  for (const script of [
-    "process.env.CHECK_TOKEN",
-    "fetch('https://fixture.invalid')",
-    "(await import('node:os')).homedir()",
-    "(await import('node:fs/promises')).readFile('SKILL.md')",
-    `(await import('node:fs/promises')).readFile(${JSON.stringify(homeFixture)})`,
-    "(await import('node:child_process')).spawn('inert-target')",
-  ]) {
-    const result = spawnSync(
-      process.execPath,
-      ["--import", pathToFileURL(guard).href, "--input-type=module", "-e", script],
-      { cwd: project, env, encoding: "utf8", timeout: 5000 },
-    );
-    expect(result.status).not.toBe(0);
-    expect(await readFile(marker, "utf8")).toBe("attempted");
-    await rm(marker);
-  }
-});
+it.each(guardModes)(
+  "positive-controls selected credential property, fetch, home discovery/content and spawn guards: %j",
+  async (mode) => {
+    const homeFixture = path.join(env.HOME ?? root, "home-fixture.txt");
+    await writeFile(homeFixture, "inert synthetic home content");
+    for (const script of [
+      "process.env.CHECK_TOKEN",
+      "fetch('https://fixture.invalid')",
+      "(await import('node:http')).get('http://fixture.invalid')",
+      "(await import('node:https')).request('https://fixture.invalid')",
+      "(await import('node:net')).connect(443, 'fixture.invalid')",
+      "(await import('node:os')).homedir()",
+      "(await import('node:fs/promises')).readFile('SKILL.md')",
+      `(await import('node:fs/promises')).readFile(${JSON.stringify(homeFixture)})`,
+      "(await import('node:child_process')).spawn('inert-target')",
+    ]) {
+      const result = spawnSync(
+        process.execPath,
+        ["--import", pathToFileURL(guard).href, "--input-type=module", "-e", script],
+        { cwd: project, env: { ...env, ...mode }, encoding: "utf8", timeout: 5000 },
+      );
+      expect(result.status).not.toBe(0);
+      expect(await readFile(marker, "utf8")).toBe("attempted");
+      await rm(marker);
+    }
+  },
+);

@@ -43,6 +43,11 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Canonicalize Windows test temporary directory
+        if: runner.os == 'Windows'
+        run: >-
+          node --input-type=module -e "import { appendFileSync, realpathSync } from 'node:fs'; import { tmpdir } from 'node:os'; const temp = realpathSync.native(tmpdir()); appendFileSync(process.env.GITHUB_ENV, 'TEMP=' + temp + '\nTMP=' + temp + '\n');"
+
       - name: Run quality gate
         run: pnpm check
 

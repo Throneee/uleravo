@@ -16,6 +16,12 @@ afterEach(async () => {
   await fs.rm(directory, { recursive: true, force: true });
 });
 
+it("reads a stable regular fixture before exercising filesystem races", async () => {
+  const file = path.join(directory, "config.json");
+  await fs.writeFile(file, "{}");
+  await expect(readConfig(file)).resolves.toBe("{}");
+});
+
 it("rejects a file changed between lstat and open using real filesystem metadata", async () => {
   const file = path.join(directory, "config.json");
   await fs.writeFile(file, "{}");
